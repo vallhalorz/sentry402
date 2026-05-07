@@ -460,6 +460,53 @@ function SeverityLegend() {
   );
 }
 
+function MiniFAQ() {
+  const faqs = [
+    {
+      q: "What does Sentry402 NOT do?",
+      a: "Sentry402 is read-only. It does not freeze funds, broadcast transactions, take custody, or contact regulators on your behalf. It produces a deterministic, citation-bound dossier that a compliance officer uses to decide on next action under their own firm's policies.",
+    },
+    {
+      q: "Is this legal advice?",
+      a: "No. The action recommendations are generic compliance heuristics aligned with FATF / FinCEN / MiCA conventions. Apply your firm's policies and consult counsel before acting on any indicator. The disclaimer is in every dossier and the SAR-style PDF export.",
+    },
+    {
+      q: "How do I integrate the API?",
+      a: "Two endpoints. /api/risk is free for the dashboard. /api/risk/paid is x402-gated at $0.05 per dossier on Base Sepolia, designed for AI agents and production integrations. See the curl examples in the Agent rail section below the form.",
+    },
+    {
+      q: "How is this different from Chainalysis or TRM?",
+      a: "Sentry402 is built around citation-or-die: every score component traces to a specific GoldRush API call, transaction hash, and pinned dataset version, so a compliance officer can reproduce the dossier and defend it in front of a regulator. The full rule pack is open and inspectable. No $30K seat, no opaque attribution graph.",
+    },
+  ];
+  return (
+    <details className="rounded-xl border border-paper-200 bg-white shadow-card no-print group">
+      <summary className="cursor-pointer select-none px-5 py-3 flex items-center gap-3 text-sm">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded bg-reg-fincen/10 text-reg-fincen">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+            <path
+              fillRule="evenodd"
+              d="M5.55 5.55a2.5 2.5 0 014.9.9c0 1.5-1.5 2-1.95 2.85V10h-1V9c0-1 1.5-1.6 1.95-2.55a1.5 1.5 0 10-2.95-.4l-.95.5zM8 12.5a.75.75 0 100-1.5.75.75 0 000 1.5z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
+        <span className="font-medium text-ink-700">Frequently asked</span>
+        <span className="text-xs text-ink-400 ml-auto group-open:hidden">Show 4 questions</span>
+        <span className="text-xs text-ink-400 ml-auto hidden group-open:inline">Hide</span>
+      </summary>
+      <div className="px-5 pb-4 pt-2 border-t border-paper-200 space-y-4">
+        {faqs.map((f) => (
+          <div key={f.q}>
+            <p className="text-sm font-medium text-ink-900">{f.q}</p>
+            <p className="text-sm text-ink-700 leading-relaxed mt-1">{f.a}</p>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function DemoChip({
   onPick,
   addr,
