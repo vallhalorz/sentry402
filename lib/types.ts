@@ -123,6 +123,26 @@ export type WalletActivity = {
 };
 
 /**
+ * Aggregated counterparty summary across the full first page of transaction
+ * history (~100 tx). One row per unique counterparty, with inbound vs
+ * outbound counts and USD totals so a compliance officer can bulk-screen
+ * the export in a spreadsheet without reconstructing per-tx joins.
+ */
+export type CounterpartyAggregate = {
+  address: string;
+  /** Attribution label if counterparty matches lib/known-addresses.ts. */
+  label?: string;
+  inbound_count: number;
+  outbound_count: number;
+  inbound_usd_total: number;
+  outbound_usd_total: number;
+  /** ISO 8601 UTC of earliest observed interaction within the sample. */
+  first_seen_at: string;
+  /** ISO 8601 UTC of most recent observed interaction within the sample. */
+  last_seen_at: string;
+};
+
+/**
  * RiskDossier — the full report.
  */
 export type RiskDossier = {
@@ -139,6 +159,8 @@ export type RiskDossier = {
     holdings?: WalletHolding[];
     /** Recent activity, capped at 5. */
     recent_activity?: WalletActivity[];
+    /** Full counterparty aggregation across the recent transactions sample. */
+    counterparties?: CounterpartyAggregate[];
   };
   overall_score: number; // 0-100, higher = more risk
   severity: Severity;

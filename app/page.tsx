@@ -552,7 +552,6 @@ function DossierView({ d }: { d: RiskDossier }) {
       <SeverityCounter d={d} />
       <ScoreCard d={d} />
       <ScoreBreakdown d={d} />
-      <ActionRecommendation d={d} />
       <SubjectContext d={d} />
       <SignalsList d={d} />
       <MetadataCard d={d} />
@@ -771,11 +770,15 @@ function ScoreBreakdown({ d }: { d: RiskDossier }) {
           total contribution {total} · displayed score {d.overall_score} (capped at 100)
         </span>
       </div>
-      <div className="flex h-3 rounded-full overflow-hidden bg-paper-100" role="img" aria-label="Score breakdown by signal">
+      <div
+        className="flex h-3 rounded-full overflow-hidden bg-paper-100"
+        role="img"
+        aria-label="Score breakdown by signal"
+      >
         {sorted.map((s) => (
           <div
             key={s.id}
-            title={`${s.type}: +${s.score_contribution}`}
+            title={`${humanizeSignalType(s.type)}: +${s.score_contribution}`}
             style={{
               width: `${(s.score_contribution / total) * 100}%`,
               backgroundColor: SEVERITY_COLOR[s.severity],
@@ -791,7 +794,9 @@ function ScoreBreakdown({ d }: { d: RiskDossier }) {
               className="inline-block h-2 w-2 rounded-full shrink-0"
               style={{ backgroundColor: SEVERITY_COLOR[s.severity] }}
             />
-            <span className="hash text-ink-500 truncate">{s.type}</span>
+            <span className="text-ink-700 truncate" title={s.type}>
+              {humanizeSignalType(s.type)}
+            </span>
             <span className="ml-auto tabular-nums text-ink-700 font-medium">
               +{s.score_contribution}
             </span>
@@ -802,87 +807,176 @@ function ScoreBreakdown({ d }: { d: RiskDossier }) {
   );
 }
 
-const ACTION_GUIDE: Record<Severity, { title: string; steps: string[]; tone: string }> = {
-  critical: {
-    title: "Recommended next steps",
-    tone: "border-signal-critical/30 bg-signal-critical/5",
-    steps: [
-      "Freeze the subject wallet across all your firm-controlled rails immediately.",
-      "File a SAR / STR within the local regulatory window (US: 30 days, EU MiCA: as soon as practicable).",
-      "Escalate to the compliance lead and notify counsel before any external communication.",
-      "Preserve the dossier JSON and PDF as exhibits with the generation_id intact.",
-    ],
-  },
-  high: {
-    title: "Recommended next steps",
-    tone: "border-signal-high/30 bg-signal-high/5",
-    steps: [
-      "Apply enhanced due diligence and request source-of-funds documentation before any further interaction.",
-      "Open an internal case in your case-management system and link the dossier generation_id.",
-      "Plan a SAR filing within the regulatory window if any indicator confirms.",
-      "Notify the compliance lead; counsel review optional unless escalation criteria met.",
-    ],
-  },
-  medium: {
-    title: "Recommended next steps",
-    tone: "border-signal-medium/30 bg-signal-medium/5",
-    steps: [
-      "Add the subject to a watchlist and monitor for escalation triggers.",
-      "Document findings in the case file; SAR filing is typically not required at this severity unless other signals exist.",
-      "Re-scan after 30 days or on material counterparty change.",
-    ],
-  },
-  low: {
-    title: "Recommended next steps",
-    tone: "border-signal-low/30 bg-signal-low/5",
-    steps: [
-      "File the dossier in the case management system for record-keeping.",
-      "No immediate action; informational profile only.",
-      "Re-scan if the wallet's role changes (e.g. counterparty in a high-value transaction).",
-    ],
-  },
-  info: {
-    title: "No action required",
-    tone: "border-signal-info/30 bg-signal-info/5",
-    steps: [
-      "This is an informational dossier. No suspicious activity indicators triggered against the current rule pack.",
-      "Retain for audit trail; the dossier is reproducible against the pinned dataset versions.",
-    ],
-  },
-};
-
-function ActionRecommendation({ d }: { d: RiskDossier }) {
-  const guide = ACTION_GUIDE[d.severity];
-  if (!guide) return null;
+function SubjectContext({ d }: { d: RiskDossier }) {
+  const hasHoldings = (d.subject.holdings?.length ?? 0) > 0;
+  const hasActivity = (d.subject.recent_activity?.length ?? 0) > 0;
+  const hasCounterparties = (d.subject.counterparties?.length ?? 0) > 0;
+  if (!hasHoldings && !hasActivity && !hasCounterparties) return null;
   return (
-    <section className={`rounded-xl border-l-4 ${guide.tone} p-5 shadow-card`} style={{ borderLeftColor: SEVERITY_COLOR[d.severity] }}>
-      <div className="flex items-center gap-2 mb-3">
-        <SeverityBadge severity={d.severity} />
-        <h3 className="text-sm font-semibold text-ink-900">{guide.title}</h3>
-      </div>
-      <ol className="space-y-2 text-sm text-ink-700 leading-relaxed list-decimal list-inside">
-        {guide.steps.map((step, i) => (
-          <li key={i}>{step}</li>
-        ))}
-      </ol>
-      <p className="text-[11px] text-ink-400 mt-3">
-        Guidance is generic and not a substitute for jurisdiction-specific compliance counsel.
-        Apply your firm&apos;s policies and consult the relevant regulator framework before acting.
-      </p>
+    <section className="grid lg:grid-cols-3 gap-4 items-start">
+      {hasHoldings && <HoldingsCard holdings={d.subject.holdings ?? []} chain={d.subject.chain} />}
+      {hasActivity && <ActivityCard activity={d.subject.recent_activity ?? []} chain={d.subject.chain} />}
+      {hasCounterparties && (
+        <CounterpartiesCard
+          counterparties={d.subject.counterparties ?? []}
+          subjectWallet={d.subject.wallet}
+          chain={d.subject.chain}
+        />
+      )}
     </section>
   );
 }
 
-function SubjectContext({ d }: { d: RiskDossier }) {
-  const hasHoldings = (d.subject.holdings?.length ?? 0) > 0;
-  const hasActivity = (d.subject.recent_activity?.length ?? 0) > 0;
-  if (!hasHoldings && !hasActivity) return null;
+function CounterpartiesCard({
+  counterparties,
+  subjectWallet,
+  chain,
+}: {
+  counterparties: CounterpartyAggregate[];
+  subjectWallet: string;
+  chain: ChainName;
+}) {
+  const totalInUsd = counterparties.reduce((s, c) => s + c.inbound_usd_total, 0);
+  const totalOutUsd = counterparties.reduce((s, c) => s + c.outbound_usd_total, 0);
+
+  function downloadCsv() {
+    const csv = buildCounterpartyCsv(counterparties, subjectWallet, chain);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeWallet = subjectWallet.slice(0, 10);
+    a.download = `sentry402-counterparties-${chain}-${safeWallet}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  const top = counterparties.slice(0, 4);
+  const remaining = counterparties.length - top.length;
+
   return (
-    <section className="grid lg:grid-cols-2 gap-4">
-      {hasHoldings && <HoldingsCard holdings={d.subject.holdings ?? []} chain={d.subject.chain} />}
-      {hasActivity && <ActivityCard activity={d.subject.recent_activity ?? []} chain={d.subject.chain} />}
-    </section>
+    <div className="rounded-xl border border-paper-200 bg-white p-5 shadow-card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs uppercase tracking-wider text-ink-500 font-medium">
+          Counterparties · {counterparties.length} unique
+        </h3>
+        <button
+          type="button"
+          onClick={downloadCsv}
+          className="inline-flex items-center gap-1.5 rounded-md bg-ink-900 text-paper-50 px-2.5 py-1 text-xs font-medium hover:bg-ink-800 transition no-print"
+          title="Download all counterparty wallets as CSV"
+          aria-label="Download counterparties as CSV"
+        >
+          <svg aria-hidden viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
+            <path d="M8 1.5a.75.75 0 01.75.75v7.69l1.97-1.97a.75.75 0 011.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 9.03a.75.75 0 011.06-1.06l1.97 1.97V2.25A.75.75 0 018 1.5z" />
+            <path d="M3 12.5a.75.75 0 01.75.75V14a.5.5 0 00.5.5h7.5a.5.5 0 00.5-.5v-.75a.75.75 0 011.5 0V14a2 2 0 01-2 2h-7.5a2 2 0 01-2-2v-.75a.75.75 0 01.75-.75z" />
+          </svg>
+          CSV
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md bg-signal-low/10 px-2 py-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-signal-low font-semibold">Inbound</p>
+          <p className="hash text-ink-700 tabular-nums">
+            ${totalInUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </p>
+        </div>
+        <div className="rounded-md bg-signal-high/10 px-2 py-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-signal-high font-semibold">Outbound</p>
+          <p className="hash text-ink-700 tabular-nums">
+            ${totalOutUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </p>
+        </div>
+      </div>
+      <ul className="divide-y divide-paper-200">
+        {top.map((c) => (
+          <li key={c.address} className="flex items-center gap-2 py-1.5 text-xs">
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full shrink-0"
+              style={{
+                backgroundColor:
+                  c.inbound_count >= c.outbound_count
+                    ? "var(--tw-color-signal-low, #10b981)"
+                    : "var(--tw-color-signal-high, #f97316)",
+              }}
+            />
+            <a
+              href={addressUrl(chain, c.address)}
+              target="_blank"
+              rel="noreferrer"
+              className="hash text-ink-700 hover:text-brand truncate transition flex-1 min-w-0"
+              title={c.address}
+            >
+              {c.label ?? `${c.address.slice(0, 8)}...${c.address.slice(-4)}`}
+            </a>
+            <span className="hash text-ink-500 tabular-nums shrink-0">
+              {c.inbound_count + c.outbound_count}×
+            </span>
+          </li>
+        ))}
+        {remaining > 0 && (
+          <li className="py-1.5 text-xs text-ink-400">
+            +{remaining} more in CSV
+          </li>
+        )}
+      </ul>
+      <p className="text-[11px] text-ink-400 leading-relaxed">
+        Aggregated from the most recent ~100 transactions sampled by GoldRush. CSV columns:
+        address, label, inbound count, outbound count, inbound USD, outbound USD, net USD, first
+        seen, last seen.
+      </p>
+    </div>
   );
+}
+
+function buildCounterpartyCsv(
+  rows: CounterpartyAggregate[],
+  subjectWallet: string,
+  chain: ChainName,
+): string {
+  const header = [
+    "address",
+    "label",
+    "inbound_count",
+    "outbound_count",
+    "inbound_usd_total",
+    "outbound_usd_total",
+    "net_outbound_usd",
+    "first_seen_utc",
+    "last_seen_utc",
+  ].join(",");
+  const meta = [
+    `# Sentry402 counterparty export`,
+    `# subject_wallet=${subjectWallet}`,
+    `# chain=${chain}`,
+    `# generated_at=${new Date().toISOString()}`,
+    `# unique_counterparties=${rows.length}`,
+  ].join("\n");
+  const lines = rows.map((r) =>
+    [
+      r.address,
+      csvEscape(r.label ?? ""),
+      r.inbound_count.toString(),
+      r.outbound_count.toString(),
+      r.inbound_usd_total.toFixed(2),
+      r.outbound_usd_total.toFixed(2),
+      (r.outbound_usd_total - r.inbound_usd_total).toFixed(2),
+      r.first_seen_at,
+      r.last_seen_at,
+    ].join(","),
+  );
+  return [meta, header, ...lines].join("\n");
+}
+
+function csvEscape(s: string): string {
+  if (s == null) return "";
+  if (/[,"\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
 }
 
 function HoldingsCard({ holdings, chain }: { holdings: WalletHolding[]; chain: ChainName }) {
@@ -1071,7 +1165,42 @@ function SeverityBadge({ severity, pulse }: { severity: Severity; pulse?: boolea
   );
 }
 
+const SIGNAL_TYPE_HUMAN: Record<string, string> = {
+  ofac_direct_match: "OFAC direct match",
+  sanctions_adjacency: "Sanctions adjacency",
+  approval_value_at_risk: "Approval value-at-risk",
+  unlimited_approval: "Unlimited approval",
+  drainer_pattern: "Drainer pattern signature",
+  tornado_cash_historic_exposure: "Tornado Cash historic exposure",
+  counterparty_concentration: "Counterparty concentration",
+  fresh_wallet: "Fresh wallet",
+  stale_wallet_reactivation: "Stale wallet reactivation",
+  mev_exposure: "MEV exposure",
+  bridge_exposure: "Bridge exposure",
+  mixer_proximity: "Mixer proximity",
+  high_velocity: "High transaction velocity",
+  structuring_pattern: "Structuring pattern",
+  coverage_advisory: "Coverage advisory",
+  stablecoin_issuer_compliance: "Stablecoin issuer compliance profile",
+  stablecoin_non_cooperative_issuer: "Non-cooperative stablecoin issuer",
+  stablecoin_mica_emt_non_compliant: "MiCA EMT non-compliant",
+  stablecoin_issuer_frozen_match: "Issuer-frozen counterparty",
+  stablecoin_velocity_typology: "Stablecoin velocity typology",
+  stablecoin_dprk_cluster_proximity: "DPRK stablecoin cluster proximity",
+};
+
+function humanizeSignalType(type: string): string {
+  return (
+    SIGNAL_TYPE_HUMAN[type] ??
+    type
+      .split("_")
+      .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : ""))
+      .join(" ")
+  );
+}
+
 function SignalsList({ d }: { d: RiskDossier }) {
+  const evidenceCount = Object.keys(d.evidence).length;
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
@@ -1083,11 +1212,32 @@ function SignalsList({ d }: { d: RiskDossier }) {
         )}
       </div>
       {d.signals.length === 0 ? (
-        <div className="rounded-lg border border-paper-200 bg-paper-100 p-6 text-center">
-          <p className="text-sm text-ink-500">
-            No indicators detected at the current rule pack. The wallet was checked against every
-            rule in the pack and the supporting GoldRush API responses are still attached as
-            evidence below.
+        <div className="rounded-lg border border-paper-200 bg-paper-100 p-6 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center h-6 w-6 rounded bg-signal-low/15 text-signal-low">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path
+                  fillRule="evenodd"
+                  d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm3.5 5.354L7.5 11.146 4.5 8.146l1.146-1.146L7.5 8.854l2.854-2.854L11.5 6.854z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+            <p className="font-medium text-sm text-ink-900">No indicators triggered</p>
+          </div>
+          <p className="text-sm text-ink-700 leading-relaxed">
+            The subject wallet was checked against all 15 rules in rule pack{" "}
+            <code className="hash text-xs bg-white px-1 py-0.5 rounded">
+              {d.metadata.rule_pack_version}
+            </code>{" "}
+            and none triggered against the active datasets. {evidenceCount} GoldRush API call
+            {evidenceCount === 1 ? "" : "s"} were captured and remain attached as evidence to
+            satisfy the FCA 2024 documentation requirement.
+          </p>
+          <p className="text-xs text-ink-400 leading-relaxed">
+            This is a clean dossier under the current rule pack and dataset versions. It does not
+            mean the wallet is risk-free in absolute terms; new rules, list updates, or fresh
+            on-chain activity may change the result on a re-scan.
           </p>
         </div>
       ) : (
@@ -1101,7 +1251,15 @@ function SignalsList({ d }: { d: RiskDossier }) {
               >
                 <div className="flex items-center gap-3 flex-wrap">
                   <SeverityBadge severity={s.severity} />
-                  <span className="hash text-xs text-ink-500">{s.type}</span>
+                  <span
+                    className="text-sm font-medium text-ink-700"
+                    title={`Signal type id: ${s.type}`}
+                  >
+                    {humanizeSignalType(s.type)}
+                  </span>
+                  <span className="hash text-[10px] text-ink-400 uppercase tracking-wider">
+                    {s.type}
+                  </span>
                   <span className="ml-auto tabular-nums text-sm font-semibold text-ink-700">
                     +{s.score_contribution}
                   </span>

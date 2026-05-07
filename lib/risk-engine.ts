@@ -55,7 +55,7 @@ import {
   KNOWN_ADDRESSES_VERSION,
   lookupAddressLabel,
 } from "./known-addresses";
-import type { WalletActivity, WalletHolding } from "./types";
+import type { CounterpartyAggregate, WalletActivity, WalletHolding } from "./types";
 import { RULE_CONFIG, RULE_PACK_VERSION } from "./rule-pack";
 import { sha256Hex } from "./hash";
 
@@ -613,24 +613,70 @@ export async function buildDossier(
   }
 
   let recentActivity: WalletActivity[] | undefined;
+  let counterpartyAggregates: CounterpartyAggregate[] | undefined;
   if (txsRes && txsRes.data.length > 0) {
     const subjLower = wallet.toLowerCase();
-    recentActivity = txsRes.data.slice(0, 5).map((t) => {
+    // Map per counterparty address (lowercased for EVM matching).
+    const agg = new Map<string, CounterpartyAggregate>();
+    recentActivity = [];
+    for (let i = 0; i < txsRes.data.length; i += 1) {
+      const t = txsRes.data[i];
       const isFromSubj = t.from.toLowerCase() === subjLower;
       const isToSubj = t.to.toLowerCase() === subjLower;
       const direction: "in" | "out" | "self" =
         isFromSubj && isToSubj ? "self" : isFromSubj ? "out" : "in";
       const counterparty = isFromSubj ? t.to : t.from;
+      if (!counterparty) continue;
       const cpLabel = lookupAddressLabel(counterparty);
-      return {
-        tx_hash: t.txHash,
-        block_signed_at: t.blockSignedAt,
-        direction,
-        counterparty,
-        counterparty_label: cpLabel?.label,
-        value_usd: t.valueQuote,
-      } satisfies WalletActivity;
-    });
+      // Only the first 5 go into the recent_activity surface.
+      if (i < 5) {
+        recentActivity.push({
+          tx_hash: t.txHash,
+          block_signed_at: t.blockSignedAt,
+          direction,
+          counterparty,
+          counterparty_label: cpLabel?.label,
+          value_usd: t.valueQuote,
+        });
+      }
+      // All counterparties aggregate (skip self-direction since it's not a
+      // counterparty).
+      if (direction === "self") continue;
+      const key = counterparty.toLowerCase();
+      const existing = agg.get(key);
+      if (existing) {
+        if (direction === "in") {
+          existing.inbound_count += 1;
+          existing.inbound_usd_total += t.valueQuote;
+        } else {
+          existing.outbound_count += 1;
+          existing.outbound_usd_total += t.valueQuote;
+        }
+        if (t.blockSignedAt && t.blockSignedAt < existing.first_seen_at) {
+          existing.first_seen_at = t.blockSignedAt;
+        }
+        if (t.blockSignedAt && t.blockSignedAt > existing.last_seen_at) {
+          existing.last_seen_at = t.blockSignedAt;
+        }
+      } else {
+        agg.set(key, {
+          address: counterparty,
+          label: cpLabel?.label,
+          inbound_count: direction === "in" ? 1 : 0,
+          outbound_count: direction === "out" ? 1 : 0,
+          inbound_usd_total: direction === "in" ? t.valueQuote : 0,
+          outbound_usd_total: direction === "out" ? t.valueQuote : 0,
+          first_seen_at: t.blockSignedAt,
+          last_seen_at: t.blockSignedAt,
+        });
+      }
+    }
+    // Sort by total absolute USD interaction descending so the top
+    // counterparties surface first.
+    counterpartyAggregates = [...agg.values()].sort(
+      (a, b) =>
+        b.inbound_usd_total + b.outbound_usd_total - (a.inbound_usd_total + a.outbound_usd_total),
+    );
   }
 
   const overallScore = Math.min(
@@ -649,6 +695,7 @@ export async function buildDossier(
       first_seen_at: earliestRes?.data.earliestBlockSignedAt ?? undefined,
       holdings: topHoldings,
       recent_activity: recentActivity,
+      counterparties: counterpartyAggregates,
     },
     overall_score: overallScore,
     severity,
