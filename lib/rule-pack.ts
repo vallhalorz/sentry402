@@ -7,7 +7,16 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.2.0-mvp";
+export const RULE_PACK_VERSION = "0.2.1-mvp";
+// 0.2.1: deep counterparty sweep. Sanctions adjacency, Tornado Cash
+//        historic exposure, stablecoin issuer-frozen-list match, and DPRK
+//        stablecoin cluster proximity now scan up to 5 pages (~500 tx) of
+//        transaction history rather than the recent-100 sample. Catches
+//        the asymmetric blind spot where an active wallet's recent tx
+//        sample no longer contains an old interaction with a low-activity
+//        sanctioned counterparty (sanctioned wallets have the link in
+//        their sample, but the active subject does not). Activity timeline
+//        and high_velocity rule still use the recent-100 sample.
 // 0.2.0: stablecoin compliance signals. Six new cited rules wiring the new
 //        STABLECOIN_REGISTRY (issuer cooperation profile + MiCA EMT status)
 //        and ISSUER_FROZEN_LIST (Tether/Circle/Paxos publicly-disclosed

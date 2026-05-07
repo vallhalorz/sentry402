@@ -276,6 +276,94 @@ export async function getEarliestTransactionDate(
   return { data: { earliestBlockSignedAt }, evidence };
 }
 
+export type DeepCounterpartySet = {
+  addresses: string[];
+  pages_scanned: number;
+  transactions_examined: number;
+  has_more: boolean;
+};
+
+/**
+ * Deep counterparty sweep for sanctions screening.
+ *
+ * The first-page transaction sample (~100 tx) returned by
+ * getRecentTransactions is fast but insufficient for sanctions adjacency
+ * when the subject is an active wallet whose interaction with a sanctioned
+ * counterparty happened long ago. Sanctioned wallets tend to have low
+ * activity, so a sanctioned wallet's first-page sample reaches further back
+ * in time than an active wallet's first-page sample — meaning the link
+ * shows up from one direction but not the other.
+ *
+ * This function paginates getAllTransactionsForAddress for up to maxPages
+ * (default 5, ~500 tx) and returns the unique counterparty set so the
+ * sanctions rules can do a depth-extended check.
+ *
+ * Cost: O(maxPages) GoldRush calls per scan. We cap at 5 pages to keep
+ * scan latency under ~10s and credit usage bounded.
+ */
+export async function getDeepCounterpartySet(
+  chain: ChainName,
+  wallet: string,
+  maxPages = 5,
+): Promise<Cited<DeepCounterpartySet>> {
+  const chainName = CHAIN_MAP[chain];
+  const subjLower = wallet.toLowerCase();
+  const set = new Set<string>();
+  let pageCount = 0;
+  let txCount = 0;
+  let hasMore = false;
+
+  for await (const resp of client().TransactionService.getAllTransactionsForAddress(
+    chainName,
+    wallet,
+  )) {
+    if (resp.error) break;
+    const items = resp.data?.items ?? [];
+    for (const t of items) {
+      if (!t) continue;
+      const from = t.from_address ?? undefined;
+      const to = t.to_address ?? undefined;
+      if (from && from.toLowerCase() !== subjLower) {
+        set.add(from.toLowerCase());
+      }
+      if (to && to.toLowerCase() !== subjLower) {
+        set.add(to.toLowerCase());
+      }
+      txCount += 1;
+    }
+    pageCount += 1;
+    if (pageCount >= maxPages) {
+      hasMore = Boolean(resp.data?.next);
+      break;
+    }
+  }
+
+  const evidence = buildEvidence({
+    endpoint: "TransactionService.getAllTransactionsForAddress (paginated sanctions sweep)",
+    endpoint_url: `https://api.covalenthq.com/v1/${chainName}/address/${wallet}/transactions_v3/?pages=${pageCount}`,
+    request_params: { chain: chainName, wallet, max_pages: maxPages },
+    response_excerpt: {
+      pages_scanned: pageCount,
+      transactions_examined: txCount,
+      unique_counterparties: set.size,
+      has_more: hasMore,
+    },
+    tx_hashes: [],
+    block_heights: [],
+    chain,
+  });
+
+  return {
+    data: {
+      addresses: [...set],
+      pages_scanned: pageCount,
+      transactions_examined: txCount,
+      has_more: hasMore,
+    },
+    evidence,
+  };
+}
+
 /**
  * Recent transactions — first page only. The SDK's `getAllTransactionsForAddress`
  * is an AsyncIterable of *pages*, not txs; we use `*ByPage` for a clean

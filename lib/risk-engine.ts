@@ -29,6 +29,7 @@ import {
 } from "./types";
 import {
   getApprovals,
+  getDeepCounterpartySet,
   getEarliestTransactionDate,
   getRecentTransactions,
   getTokenBalances,
@@ -123,11 +124,12 @@ export async function buildDossier(
   // return empty for solana-mainnet, so we skip them and add a coverage
   // advisory signal further down.
   const isSolana = chain === "solana-mainnet";
-  const [balancesRes, approvalsRes, txsRes, earliestRes] = await Promise.all([
+  const [balancesRes, approvalsRes, txsRes, earliestRes, deepCpRes] = await Promise.all([
     safe(() => getTokenBalances(chain, wallet)),
     isSolana ? Promise.resolve(null) : safe(() => getApprovals(chain, wallet)),
     isSolana ? Promise.resolve(null) : safe(() => getRecentTransactions(chain, wallet)),
     isSolana ? Promise.resolve(null) : safe(() => getEarliestTransactionDate(chain, wallet)),
+    isSolana ? Promise.resolve(null) : safe(() => getDeepCounterpartySet(chain, wallet, 5)),
   ]);
 
   // Register evidence for every successful call (even rules that don't fire
@@ -137,6 +139,7 @@ export async function buildDossier(
   if (approvalsRes) evidence[approvalsRes.evidence.id] = approvalsRes.evidence;
   if (txsRes) evidence[txsRes.evidence.id] = txsRes.evidence;
   if (earliestRes) evidence[earliestRes.evidence.id] = earliestRes.evidence;
+  if (deepCpRes) evidence[deepCpRes.evidence.id] = deepCpRes.evidence;
 
   // ---- Rule: approval_value_at_risk + unlimited_approval + drainer_pattern ----
   if (approvalsRes && approvalsRes.data.length > 0) {
@@ -212,14 +215,30 @@ export async function buildDossier(
   }
 
   // ---- Rule: sanctions_adjacency_hop1 + tornado_cash_historic ----
+  // Use the deep counterparty sweep (up to 5 pages / ~500 tx) when available
+  // so we catch sanctioned interactions older than the activity sample. Falls
+  // back to the recent-100 set if the deep call failed.
+  const sanctionsCounterpartySet = deepCpRes
+    ? new Set(deepCpRes.data.addresses)
+    : (() => {
+        const s = new Set<string>();
+        if (txsRes) {
+          for (const t of txsRes.data) {
+            if (t.from && t.from.toLowerCase() !== wallet.toLowerCase())
+              s.add(t.from.toLowerCase());
+            if (t.to && t.to.toLowerCase() !== wallet.toLowerCase())
+              s.add(t.to.toLowerCase());
+          }
+        }
+        return s;
+      })();
+  const sanctionsEvidenceIds = [
+    ...(deepCpRes ? [deepCpRes.evidence.id] : []),
+    ...(txsRes ? [txsRes.evidence.id] : []),
+  ];
+
   if (txsRes && txsRes.data.length > 0) {
-    const counterparties = new Set<string>();
-    for (const t of txsRes.data) {
-      if (t.from && t.from.toLowerCase() !== wallet.toLowerCase())
-        counterparties.add(t.from.toLowerCase());
-      if (t.to && t.to.toLowerCase() !== wallet.toLowerCase())
-        counterparties.add(t.to.toLowerCase());
-    }
+    const counterparties = sanctionsCounterpartySet;
 
     const sanctionsHits: { addr: string; entry: ReturnType<typeof isSdnAddress> }[] = [];
     const historicHits: { addr: string; entry: ReturnType<typeof isSdnAddress> }[] = [];
@@ -230,16 +249,19 @@ export async function buildDossier(
     }
 
     if (sanctionsHits.length > 0) {
+      const depthNote = deepCpRes
+        ? ` Sanctions sweep examined ${deepCpRes.data.transactions_examined} transactions across ${deepCpRes.data.pages_scanned} GoldRush pages.`
+        : "";
       signals.push({
         id: newSignalId(),
         type: "sanctions_adjacency",
         severity: RULE_CONFIG.sanctions_adjacency_hop1.severity,
         title: `Direct counterparty on active sanctions list (${sanctionsHits.length} match${sanctionsHits.length === 1 ? "" : "es"})`,
-        rationale: `The subject wallet has ≥1 direct on-chain counterparty currently on an active sanctions or designated-cluster list. This is a Hop-1 sanctions adjacency and warrants immediate escalation per OFAC 50% rule and FATF Recommendation 6 guidance. Recommend SAR filing and freeze pending review.`,
+        rationale: `The subject wallet has ≥1 direct on-chain counterparty currently on an active sanctions or designated-cluster list. This is a Hop-1 sanctions adjacency and warrants immediate escalation per OFAC 50% rule and FATF Recommendation 6 guidance. Recommend SAR filing and freeze pending review.${depthNote}`,
         fatf_reference: "FATF Recommendation 6 (Targeted Financial Sanctions)",
         fincen_reference:
           "FinCEN SAR Form 111 — Suspicious Activity Type 31y (Transaction with OFAC sanctioned country/entity)",
-        evidence_ids: [txsRes.evidence.id],
+        evidence_ids: sanctionsEvidenceIds,
         score_contribution: RULE_CONFIG.sanctions_adjacency_hop1.weight,
         metadata: {
           matches: sanctionsHits.map((h) => ({
@@ -259,7 +281,7 @@ export async function buildDossier(
         severity: RULE_CONFIG.tornado_cash_historic_exposure.severity,
         title: `Historic mixer/Tornado-Cash counterparty exposure (informational)`,
         rationale: `The subject wallet has on-chain counterparties on the historic Tornado Cash address list. Note: Tornado Cash was DELISTED from the OFAC SDN list on 2025-03-21 and the Texas Federal Court permanently enjoined re-listing on 2025-04-29. Exposure remains relevant for typology analysis but is NOT an active sanctions hit. Treat as informational unless paired with other indicators.`,
-        evidence_ids: [txsRes.evidence.id],
+        evidence_ids: sanctionsEvidenceIds,
         score_contribution: RULE_CONFIG.tornado_cash_historic_exposure.weight,
         metadata: { matches: historicHits.map((h) => h.addr) },
       });
@@ -446,17 +468,11 @@ export async function buildDossier(
   // ---- Rule: stablecoin_issuer_frozen_match (counterparty) ----
   // Subject's tx counterparties match an address publicly frozen by
   // Tether / Circle / Paxos. Distinct from OFAC SDN — issuer-level freeze
-  // is a softer but still material AML signal.
+  // is a softer but still material AML signal. Uses the deep counterparty
+  // sweep so we catch issuer-frozen interactions older than the activity
+  // sample.
   if (txsRes && txsRes.data.length > 0) {
-    const counterparties = new Set<string>();
-    for (const t of txsRes.data) {
-      if (t.from && t.from.toLowerCase() !== wallet.toLowerCase()) {
-        counterparties.add(t.from.toLowerCase());
-      }
-      if (t.to && t.to.toLowerCase() !== wallet.toLowerCase()) {
-        counterparties.add(t.to.toLowerCase());
-      }
-    }
+    const counterparties = sanctionsCounterpartySet;
     const issuerFrozenHits: Array<{ addr: string; entry: ReturnType<typeof lookupIssuerFrozen> }> = [];
     for (const cp of counterparties) {
       const hit = lookupIssuerFrozen(cp);
@@ -471,7 +487,7 @@ export async function buildDossier(
         rationale: `The subject wallet has on-chain interaction with ≥1 address that has been publicly frozen by a stablecoin issuer (Tether, Circle, or Paxos) via their on-chain freeze authority. Issuer-level freezes are a separate signal from OFAC SDN designation: they indicate the issuer's own AML/compliance team determined the address sufficiently risky to lock the asset balance. Recommend SAR escalation and request issuer freeze rationale documentation under MLAT or relevant regulator-to-regulator channels.`,
         fatf_reference: "FATF Recommendation 16 (Wire Transfers / Travel Rule); FATF Recommendation 20 (STR filing)",
         fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31z (Other suspicious activity)",
-        evidence_ids: [txsRes.evidence.id],
+        evidence_ids: sanctionsEvidenceIds,
         score_contribution: RULE_CONFIG.stablecoin_issuer_frozen_match.weight,
         metadata: {
           matches: issuerFrozenHits.map((h) => ({
@@ -486,12 +502,9 @@ export async function buildDossier(
     }
 
     // ---- Rule: stablecoin_dprk_cluster_proximity ----
-    // Subject's tx counterparties match the OFAC SB0416 (2026-03-12) DPRK
-    // designation — these are STABLECOIN addresses (USDT on Ethereum/Tron)
-    // per the Treasury press release. This signal complements
-    // sanctions_adjacency by citing the stablecoin-laundering typology
-    // documented by ZachXBT (July 2025) and FATF (June 2025 Targeted
-    // Update §IT-worker schemes), not just the sanctions list.
+    // Same logic as sanctions_adjacency but specifically for the SB0416
+    // DPRK stablecoin designations. Uses the deep counterparty sweep so we
+    // catch DPRK interactions older than the activity sample.
     const sb0416StablecoinHits = [];
     for (const cp of counterparties) {
       const sdnHit = isSdnAddress(cp);
@@ -514,7 +527,7 @@ export async function buildDossier(
         rationale: `The subject wallet has direct on-chain interaction with ≥1 stablecoin (USDT) address designated by OFAC SB0416 on 2026-03-12 as part of the DPRK IT-worker laundering network (Amnokgang, Yun Song Guk, or Sim Hyon Sop). This is consistent with the stablecoin-laundering typology documented by ZachXBT in July 2025 ("DPRK IT-worker USDC clusters") and referenced in the FATF Targeted Update of June 2025 §IT-worker schemes. The signal is complementary to sanctions_adjacency — it specifically identifies the stablecoin laundering pattern, not merely the SDN match.`,
         fatf_reference: "FATF Recommendation 7 (Targeted Financial Sanctions); FATF Targeted Update June 2025 §IT-worker schemes",
         fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31y (OFAC sanctioned country/entity); 32a (Sanctions evasion structuring)",
-        evidence_ids: [txsRes.evidence.id],
+        evidence_ids: sanctionsEvidenceIds,
         score_contribution: RULE_CONFIG.stablecoin_dprk_cluster_proximity.weight,
         metadata: {
           matches: sb0416StablecoinHits.map((h) => ({
