@@ -56,6 +56,8 @@ type RecentScan = {
   timestamp: number;
 };
 
+type Tab = "screening" | "counterparties";
+
 const RECENTS_KEY = "sentry402:recent";
 const RECENTS_MAX = 5;
 
@@ -108,11 +110,24 @@ export default function Home() {
   const [dossier, setDossier] = useState<RiskDossier | null>(null);
   const [origin, setOrigin] = useState("http://localhost:3000");
   const [recents, setRecents] = useState<RecentScan[]>([]);
+  const [tab, setTab] = useState<Tab>("screening");
 
   useEffect(() => {
-    if (typeof window !== "undefined") setOrigin(window.location.origin);
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+      // Read tab from URL hash so the tab is shareable.
+      const h = window.location.hash.replace("#", "");
+      if (h === "counterparties" || h === "screening") setTab(h);
+    }
     setRecents(loadRecents());
   }, []);
+
+  function changeTab(next: Tab) {
+    setTab(next);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `#${next}`);
+    }
+  }
 
   const validation = validateAddress(wallet.trim(), chain);
 
@@ -188,8 +203,14 @@ export default function Home() {
         </div>
       </section>
 
-      <SeverityLegend />
-      <MiniFAQ />
+      <TabNav tab={tab} onChange={changeTab} />
+
+      {tab === "screening" && (
+        <>
+          <SeverityLegend />
+          <MiniFAQ />
+        </>
+      )}
 
       <form
         onSubmit={runScan}
@@ -366,8 +387,20 @@ export default function Home() {
       )}
 
       {loading && <DossierSkeleton />}
-      {dossier && <DossierView d={dossier} />}
+      {dossier && tab === "screening" && <DossierView d={dossier} />}
+      {dossier && tab === "counterparties" && <CounterpartyExposureView d={dossier} />}
+      {!dossier && !loading && tab === "counterparties" && (
+        <div className="rounded-xl border border-paper-200 bg-paper-100 p-8 text-center space-y-2">
+          <p className="text-sm text-ink-700 font-medium">No wallet scanned yet</p>
+          <p className="text-xs text-ink-500 max-w-md mx-auto leading-relaxed">
+            Paste a wallet above and click &ldquo;Generate dossier&rdquo;. The counterparty
+            exposure view will populate with the unique counterparty list aggregated from the
+            most recent ~100 transactions, with one-click CSV export for bulk screening.
+          </p>
+        </div>
+      )}
 
+      {tab === "screening" && (
       <section className="rounded-xl border border-brand/20 bg-gradient-to-br from-paper-100 to-white p-6 space-y-3 shadow-card no-print">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-brand/10 text-brand">
@@ -400,6 +433,271 @@ curl -i -H 'X-PAYMENT: <signed-payment-payload>' \\
           soon&rdquo; per their docs. We do not pretend testnet USDC is real settlement.
         </p>
       </section>
+      )}
+    </div>
+  );
+}
+
+function TabNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
+  const tabs: Array<{ id: Tab; label: string; sublabel: string }> = [
+    {
+      id: "screening",
+      label: "Screening",
+      sublabel: "Cited risk dossier on a single wallet",
+    },
+    {
+      id: "counterparties",
+      label: "Counterparty exposure",
+      sublabel: "Full counterparty list with one-click CSV export",
+    },
+  ];
+  return (
+    <nav
+      className="rounded-xl border border-paper-200 bg-white p-1 shadow-card flex gap-1 no-print"
+      role="tablist"
+      aria-label="Sentry402 modes"
+    >
+      {tabs.map((t) => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(t.id)}
+            className={`flex-1 rounded-lg px-4 py-3 text-left transition ${
+              active
+                ? "bg-ink-900 text-paper-50"
+                : "text-ink-700 hover:bg-paper-100"
+            }`}
+          >
+            <div className="text-sm font-semibold tracking-tight">{t.label}</div>
+            <div
+              className={`text-[11px] mt-0.5 ${
+                active ? "text-paper-200" : "text-ink-400"
+              }`}
+            >
+              {t.sublabel}
+            </div>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function CounterpartyExposureView({ d }: { d: RiskDossier }) {
+  const counterparties = d.subject.counterparties ?? [];
+  const hasData = counterparties.length > 0;
+  const totalIn = counterparties.reduce((s, c) => s + c.inbound_usd_total, 0);
+  const totalOut = counterparties.reduce((s, c) => s + c.outbound_usd_total, 0);
+  const totalInteractions = counterparties.reduce(
+    (s, c) => s + c.inbound_count + c.outbound_count,
+    0,
+  );
+  const inboundOnly = counterparties.filter(
+    (c) => c.inbound_count > 0 && c.outbound_count === 0,
+  ).length;
+  const outboundOnly = counterparties.filter(
+    (c) => c.outbound_count > 0 && c.inbound_count === 0,
+  ).length;
+  const both = counterparties.filter(
+    (c) => c.inbound_count > 0 && c.outbound_count > 0,
+  ).length;
+
+  function downloadCsv() {
+    const csv = buildCounterpartyCsv(counterparties, d.subject.wallet, d.subject.chain);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safe = d.subject.wallet.slice(0, 10);
+    a.download = `sentry402-counterparties-${d.subject.chain}-${safe}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  return (
+    <article className="space-y-6 animate-in fade-in duration-300">
+      <header className="rounded-xl border border-paper-200 bg-white p-6 shadow-card flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="text-xs uppercase tracking-wider text-ink-400 font-medium">
+            Counterparty exposure for
+          </p>
+          {d.subject.label && (
+            <p className="text-base font-semibold text-ink-900">{d.subject.label}</p>
+          )}
+          <a
+            href={addressUrl(d.subject.chain, d.subject.wallet)}
+            target="_blank"
+            rel="noreferrer"
+            className="hash text-sm text-ink-700 hover:text-brand hover:underline transition break-all"
+            title={`Open on ${explorerName(d.subject.chain)}`}
+          >
+            {d.subject.wallet}
+          </a>
+          <p className="text-xs text-ink-500">
+            {d.subject.chain} · sampled from the most recent ~100 transactions
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={downloadCsv}
+          disabled={!hasData}
+          className="inline-flex items-center gap-2 rounded-lg bg-ink-900 text-paper-50 px-5 py-2.5 text-sm font-medium hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 no-print"
+        >
+          <svg aria-hidden viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+            <path d="M8 1.5a.75.75 0 01.75.75v7.69l1.97-1.97a.75.75 0 011.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 9.03a.75.75 0 011.06-1.06l1.97 1.97V2.25A.75.75 0 018 1.5z" />
+            <path d="M3 12.5a.75.75 0 01.75.75V14a.5.5 0 00.5.5h7.5a.5.5 0 00.5-.5v-.75a.75.75 0 011.5 0V14a2 2 0 01-2 2h-7.5a2 2 0 01-2-2v-.75a.75.75 0 01.75-.75z" />
+          </svg>
+          Download CSV ({counterparties.length} {counterparties.length === 1 ? "row" : "rows"})
+        </button>
+      </header>
+
+      {!hasData ? (
+        <div className="rounded-xl border border-paper-200 bg-paper-100 p-8 text-center">
+          <p className="text-sm text-ink-700 font-medium">No counterparties detected</p>
+          <p className="text-xs text-ink-500 max-w-md mx-auto leading-relaxed mt-2">
+            The first-page transaction sample for this wallet returned no counterparty addresses.
+            This is unusual — it can happen with brand-new wallets, contract addresses with no
+            external transfers, or chains where GoldRush coverage is limited.
+          </p>
+        </div>
+      ) : (
+        <>
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              label="Unique counterparties"
+              value={counterparties.length.toString()}
+              tone="info"
+            />
+            <StatCard
+              label="Total interactions"
+              value={totalInteractions.toString()}
+              tone="info"
+              sub={`${inboundOnly} inbound-only · ${outboundOnly} outbound-only · ${both} both`}
+            />
+            <StatCard
+              label="Inbound USD"
+              value={`$${totalIn.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+              tone="low"
+            />
+            <StatCard
+              label="Outbound USD"
+              value={`$${totalOut.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+              tone="high"
+            />
+          </section>
+
+          <section className="rounded-xl border border-paper-200 bg-white shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-paper-100 text-[10px] uppercase tracking-wider text-ink-500">
+                  <tr>
+                    <th className="text-left font-medium px-4 py-3">Counterparty</th>
+                    <th className="text-right font-medium px-3 py-3">In</th>
+                    <th className="text-right font-medium px-3 py-3">Out</th>
+                    <th className="text-right font-medium px-3 py-3">Inbound USD</th>
+                    <th className="text-right font-medium px-3 py-3">Outbound USD</th>
+                    <th className="text-right font-medium px-3 py-3">Net (out − in)</th>
+                    <th className="text-right font-medium px-4 py-3">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-paper-200">
+                  {counterparties.map((c) => {
+                    const net = c.outbound_usd_total - c.inbound_usd_total;
+                    const netColor =
+                      net > 0
+                        ? "text-signal-high"
+                        : net < 0
+                          ? "text-signal-low"
+                          : "text-ink-500";
+                    return (
+                      <tr key={c.address} className="hover:bg-paper-100/40 transition">
+                        <td className="px-4 py-3 align-top">
+                          {c.label && (
+                            <p className="text-sm font-medium text-ink-900 truncate max-w-[260px]">
+                              {c.label}
+                            </p>
+                          )}
+                          <a
+                            href={addressUrl(d.subject.chain, c.address)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hash text-[11px] text-ink-500 hover:text-brand hover:underline transition truncate block max-w-[260px]"
+                            title={c.address}
+                          >
+                            {c.address}
+                          </a>
+                        </td>
+                        <td className="text-right px-3 py-3 tabular-nums text-signal-low">
+                          {c.inbound_count > 0 ? c.inbound_count : "—"}
+                        </td>
+                        <td className="text-right px-3 py-3 tabular-nums text-signal-high">
+                          {c.outbound_count > 0 ? c.outbound_count : "—"}
+                        </td>
+                        <td className="text-right px-3 py-3 tabular-nums hash text-ink-700">
+                          ${c.inbound_usd_total.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right px-3 py-3 tabular-nums hash text-ink-700">
+                          ${c.outbound_usd_total.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                        <td className={`text-right px-3 py-3 tabular-nums hash ${netColor}`}>
+                          {net >= 0 ? "+" : ""}
+                          ${Math.abs(net).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right px-4 py-3 text-xs text-ink-500">
+                          {c.last_seen_at ? timeAgo(c.last_seen_at) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-paper-200 bg-paper-100/50 px-4 py-3 text-xs text-ink-500 leading-relaxed">
+            <p>
+              <strong className="text-ink-700">CSV columns:</strong> address, label, inbound_count,
+              outbound_count, inbound_usd_total, outbound_usd_total, net_outbound_usd,
+              first_seen_utc, last_seen_utc. The CSV header includes meta lines (#-prefixed) with
+              subject_wallet, chain, generated_at, and unique_counterparties for provenance when
+              the file is opened in a spreadsheet.
+            </p>
+          </section>
+        </>
+      )}
+    </article>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone: Severity;
+}) {
+  const toneClasses: Record<Severity, string> = {
+    info: "border-signal-info/30 bg-signal-info/5",
+    low: "border-signal-low/30 bg-signal-low/5",
+    medium: "border-signal-medium/30 bg-signal-medium/5",
+    high: "border-signal-high/30 bg-signal-high/5",
+    critical: "border-signal-critical/30 bg-signal-critical/5",
+  };
+  return (
+    <div className={`rounded-xl border ${toneClasses[tone]} p-4`}>
+      <p className="text-[10px] uppercase tracking-wider text-ink-500 font-semibold">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink-900 tabular-nums">{value}</p>
+      {sub && <p className="text-[11px] text-ink-500 mt-1 leading-snug">{sub}</p>}
     </div>
   );
 }
@@ -810,23 +1108,18 @@ function ScoreBreakdown({ d }: { d: RiskDossier }) {
 function SubjectContext({ d }: { d: RiskDossier }) {
   const hasHoldings = (d.subject.holdings?.length ?? 0) > 0;
   const hasActivity = (d.subject.recent_activity?.length ?? 0) > 0;
-  const hasCounterparties = (d.subject.counterparties?.length ?? 0) > 0;
-  if (!hasHoldings && !hasActivity && !hasCounterparties) return null;
+  if (!hasHoldings && !hasActivity) return null;
   return (
-    <section className="grid lg:grid-cols-3 gap-4 items-start">
+    <section className="grid lg:grid-cols-2 gap-4 items-start">
       {hasHoldings && <HoldingsCard holdings={d.subject.holdings ?? []} chain={d.subject.chain} />}
       {hasActivity && <ActivityCard activity={d.subject.recent_activity ?? []} chain={d.subject.chain} />}
-      {hasCounterparties && (
-        <CounterpartiesCard
-          counterparties={d.subject.counterparties ?? []}
-          subjectWallet={d.subject.wallet}
-          chain={d.subject.chain}
-        />
-      )}
     </section>
   );
 }
 
+// Kept for potential reuse on the screening tab in the future. Not currently
+// rendered — the counterparty surface lives on its own tab now.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CounterpartiesCard({
   counterparties,
   subjectWallet,
