@@ -56,3 +56,34 @@ body {
     #e7e5dc 100%
   );
 }
+
+/* Print styles. When the compliance officer hits Cmd+P we strip the form,
+   the agent rail, and the export buttons so the dossier prints as a clean
+   SAR exhibit. Page-break controls keep signal cards from splitting awkwardly. */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  header, footer { display: none !important; }
+  main { padding: 0 !important; max-width: 100% !important; }
+  article > * { page-break-inside: avoid; }
+  .shadow-card { box-shadow: none !important; }
+  .hero-gradient { background: none !important; }
+  details { display: block; }
+  details summary { display: none; }
+  details > * { display: block !important; }
+}
+
+/* Lightweight fade-in for the dossier render. Tailwind's `animate-in fade-in
+   duration-300` utility uses these. */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in.fade-in { animation: fade-in 300ms ease-out; }
+.animate-pulse {
+  animation: pulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}

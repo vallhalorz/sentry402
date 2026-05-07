@@ -51,6 +51,11 @@ import {
   ISSUER_FROZEN_LIST_VERSION,
   lookupIssuerFrozen,
 } from "./stablecoin-frozen";
+import {
+  KNOWN_ADDRESSES_VERSION,
+  lookupAddressLabel,
+} from "./known-addresses";
+import type { WalletActivity, WalletHolding } from "./types";
 import { RULE_CONFIG, RULE_PACK_VERSION } from "./rule-pack";
 import { sha256Hex } from "./hash";
 
@@ -579,6 +584,55 @@ export async function buildDossier(
     });
   }
 
+  // ============== Subject context surfacing (no new API calls) ==============
+  // Extract top holdings + recent activity from the data we already fetched.
+  // Compliance officer's first three questions: "what does it hold?" "who
+  // does it talk to?" "what's the score breakdown?" — surface them so the
+  // dossier doubles as a triage panel, not just a verdict.
+
+  const subjectLabel = lookupAddressLabel(wallet);
+  let topHoldings: WalletHolding[] | undefined;
+  if (balancesRes && balancesRes.data.length > 0) {
+    topHoldings = balancesRes.data
+      .filter((b) => b.quote > 0)
+      .sort((a, b) => b.quote - a.quote)
+      .slice(0, 10)
+      .map((b) => {
+        const sc = lookupStablecoinByContract(chain, b.contract);
+        const label = lookupAddressLabel(b.contract);
+        return {
+          symbol: b.symbol,
+          contract_address: b.contract,
+          balance_usd: b.quote,
+          stablecoin: sc
+            ? { issuer: sc.issuer, freeze_policy: sc.freeze_policy }
+            : undefined,
+          contract_label: label?.label,
+        } satisfies WalletHolding;
+      });
+  }
+
+  let recentActivity: WalletActivity[] | undefined;
+  if (txsRes && txsRes.data.length > 0) {
+    const subjLower = wallet.toLowerCase();
+    recentActivity = txsRes.data.slice(0, 5).map((t) => {
+      const isFromSubj = t.from.toLowerCase() === subjLower;
+      const isToSubj = t.to.toLowerCase() === subjLower;
+      const direction: "in" | "out" | "self" =
+        isFromSubj && isToSubj ? "self" : isFromSubj ? "out" : "in";
+      const counterparty = isFromSubj ? t.to : t.from;
+      const cpLabel = lookupAddressLabel(counterparty);
+      return {
+        tx_hash: t.txHash,
+        block_signed_at: t.blockSignedAt,
+        direction,
+        counterparty,
+        counterparty_label: cpLabel?.label,
+        value_usd: t.valueQuote,
+      } satisfies WalletActivity;
+    });
+  }
+
   const overallScore = Math.min(
     100,
     signals.reduce((s, sig) => s + sig.score_contribution, 0),
@@ -587,7 +641,14 @@ export async function buildDossier(
   const headline = buildHeadline(signals, overallScore);
 
   const dossier: RiskDossier = {
-    subject: { wallet, chain, queried_at: queriedAt },
+    subject: {
+      wallet,
+      chain,
+      queried_at: queriedAt,
+      label: subjectLabel?.label,
+      holdings: topHoldings,
+      recent_activity: recentActivity,
+    },
     overall_score: overallScore,
     severity,
     headline,
@@ -607,9 +668,11 @@ export async function buildDossier(
       // change across the registry.
       stablecoin_registry_version: STABLECOIN_REGISTRY_VERSION,
       issuer_frozen_list_version: ISSUER_FROZEN_LIST_VERSION,
+      known_addresses_version: KNOWN_ADDRESSES_VERSION,
     } as DossierMetadata & {
       stablecoin_registry_version: string;
       issuer_frozen_list_version: string;
+      known_addresses_version: string;
     },
   };
   return dossier;

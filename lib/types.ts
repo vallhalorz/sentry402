@@ -91,6 +91,38 @@ export type Signal = {
 };
 
 /**
+ * Top-level holding row surfaced under subject context. Sourced from the
+ * GoldRush balances call we already fetch — no extra API call.
+ */
+export type WalletHolding = {
+  symbol: string;
+  contract_address: string;
+  balance_usd: number;
+  /** Optional label if this holding is a known stablecoin (issuer + freeze
+   * policy) so the Holdings panel can show inline compliance posture. */
+  stablecoin?: { issuer: string; freeze_policy: string };
+  /** Optional label if the contract address is a well-known token (USDT
+   * official contract, etc.). */
+  contract_label?: string;
+};
+
+/**
+ * Top-level activity row surfaced under subject context. Sourced from the
+ * GoldRush transactions call we already fetch.
+ */
+export type WalletActivity = {
+  tx_hash: string;
+  block_signed_at: string;
+  /** "in" = wallet was recipient; "out" = wallet was sender; "self" = both
+   * sides matched the subject (intra-wallet rebalance). */
+  direction: "in" | "out" | "self";
+  counterparty: string;
+  /** Attribution label if counterparty matches lib/known-addresses.ts. */
+  counterparty_label?: string;
+  value_usd: number;
+};
+
+/**
  * RiskDossier — the full report.
  */
 export type RiskDossier = {
@@ -98,6 +130,12 @@ export type RiskDossier = {
     wallet: string;
     chain: ChainName;
     queried_at: string; // ISO 8601 UTC
+    /** Attribution label if subject matches lib/known-addresses.ts. */
+    label?: string;
+    /** Top holdings by USD value, capped at 10. */
+    holdings?: WalletHolding[];
+    /** Recent activity, capped at 5. */
+    recent_activity?: WalletActivity[];
   };
   overall_score: number; // 0-100, higher = more risk
   severity: Severity;
