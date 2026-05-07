@@ -17,6 +17,7 @@
 
 import {
   type ChainName,
+  type DossierMetadata,
   type Evidence,
   type RiskDossier,
   type Severity,
@@ -39,6 +40,17 @@ import {
   isSdnAddress,
   SDN_LIST_VERSION,
 } from "./sdn";
+import {
+  FREEZE_POLICY_RISK_POINTS,
+  lookupStablecoinByContract,
+  STABLECOIN_REGISTRY,
+  STABLECOIN_REGISTRY_VERSION,
+  type StablecoinEntry,
+} from "./stablecoin-registry";
+import {
+  ISSUER_FROZEN_LIST_VERSION,
+  lookupIssuerFrozen,
+} from "./stablecoin-frozen";
 import { RULE_CONFIG, RULE_PACK_VERSION } from "./rule-pack";
 import { sha256Hex } from "./hash";
 
@@ -292,6 +304,261 @@ export async function buildDossier(
     }
   }
 
+  // ============== Stablecoin compliance rules (rule pack 0.2.0) ==============
+  //
+  // Six cited rules anchored on STABLECOIN_REGISTRY (issuer cooperation +
+  // MiCA EMT status) and ISSUER_FROZEN_LIST (Tether/Circle/Paxos publicly
+  // disclosed on-chain freezes). These signals are stablecoin-specific —
+  // they distinguish issuer-level compliance posture from ownership-level
+  // sanctions hits already covered by ofac_direct_match and
+  // sanctions_adjacency.
+
+  if (balancesRes && balancesRes.data.length > 0) {
+    const stablecoinHoldings: Array<{
+      entry: StablecoinEntry;
+      balanceUsd: number;
+      contract: string;
+    }> = [];
+    for (const bal of balancesRes.data) {
+      if (!bal.contract) continue;
+      const hit = lookupStablecoinByContract(chain, bal.contract);
+      if (hit && bal.quote > 0) {
+        stablecoinHoldings.push({ entry: hit, balanceUsd: bal.quote, contract: bal.contract });
+      }
+    }
+
+    const totalStablecoinUsd = stablecoinHoldings.reduce(
+      (s, h) => s + h.balanceUsd,
+      0,
+    );
+
+    // ---- Rule: stablecoin_non_cooperative_issuer ----
+    // Critical — wallet holds A7A5 or any sanctions-evasion-vehicle stablecoin.
+    const nonCoop = stablecoinHoldings.filter(
+      (h) => h.entry.freeze_policy === "non_cooperative",
+    );
+    if (nonCoop.length >= RULE_CONFIG.stablecoin_non_cooperative_issuer.threshold) {
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_non_cooperative_issuer",
+        severity: RULE_CONFIG.stablecoin_non_cooperative_issuer.severity,
+        title: `Holdings include sanctions-evasion-vehicle stablecoin: ${nonCoop.map((h) => h.entry.ticker).join(", ")}`,
+        rationale: `The subject wallet holds ${nonCoop.map((h) => `${h.entry.ticker} (issuer: ${h.entry.issuer})`).join(", ")} — categorized as non-cooperative under the Sentry402 stablecoin registry. Holdings of issuer-controlled stablecoins designed to circulate outside Western freeze authority are a critical AML/CFT advisory under FATF Recommendation 7 (Targeted Financial Sanctions related to Proliferation) and indicate potential sanctions-evasion vector consistent with the FPSI gap analysis published by CSIS in December 2025.`,
+        fatf_reference: "FATF Recommendation 7 (Targeted Financial Sanctions related to Proliferation)",
+        fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 32a (Sanctions evasion structuring)",
+        mica_reference: "MiCA Article 17 (E-Money Token issuer authorization requirements)",
+        evidence_ids: [balancesRes.evidence.id],
+        score_contribution: RULE_CONFIG.stablecoin_non_cooperative_issuer.weight,
+        metadata: {
+          tickers: nonCoop.map((h) => h.entry.ticker),
+          issuers: nonCoop.map((h) => h.entry.issuer),
+          sources: nonCoop.map((h) => h.entry.source),
+        },
+      });
+    }
+
+    // ---- Rule: stablecoin_issuer_compliance (informational profile) ----
+    // Always emits when stablecoin holdings exceed threshold — gives the
+    // compliance reviewer an at-a-glance view of WHICH issuers control
+    // their subject's stablecoin exposure. Not punitive on its own; pairs
+    // with the rules above.
+    if (totalStablecoinUsd >= RULE_CONFIG.stablecoin_issuer_compliance.threshold) {
+      const byPolicy: Record<string, { count: number; usd: number; tickers: string[] }> = {};
+      for (const h of stablecoinHoldings) {
+        const k = h.entry.freeze_policy;
+        if (!byPolicy[k]) byPolicy[k] = { count: 0, usd: 0, tickers: [] };
+        byPolicy[k].count += 1;
+        byPolicy[k].usd += h.balanceUsd;
+        byPolicy[k].tickers.push(h.entry.ticker);
+      }
+      const profile = Object.entries(byPolicy)
+        .map(
+          ([policy, v]) =>
+            `${policy}: $${v.usd.toFixed(0)} (${v.tickers.join(", ")})`,
+        )
+        .join("; ");
+      const mixedOrUncertain = (byPolicy["mixed"]?.usd ?? 0) +
+        (byPolicy["decentralized_no_authority"]?.usd ?? 0);
+      const baseScore = Math.round(
+        Math.min(
+          RULE_CONFIG.stablecoin_issuer_compliance.weight,
+          stablecoinHoldings.reduce(
+            (s, h) => s + FREEZE_POLICY_RISK_POINTS[h.entry.freeze_policy],
+            0,
+          ),
+        ),
+      );
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_issuer_compliance",
+        severity:
+          mixedOrUncertain > totalStablecoinUsd * 0.3
+            ? "medium"
+            : RULE_CONFIG.stablecoin_issuer_compliance.severity,
+        title: `Stablecoin issuer compliance profile — $${totalStablecoinUsd.toFixed(0)} across ${stablecoinHoldings.length} stablecoin${stablecoinHoldings.length === 1 ? "" : "s"}`,
+        rationale: `The subject wallet's stablecoin exposure breaks down by issuer freeze-cooperation policy as follows: ${profile}. Issuer profile is sourced from the Sentry402 stablecoin registry, which aggregates Tether/Circle/Paxos transparency reports, ESMA MiCA EMT register, and CSIS FPSI gap analysis. Cooperative-issuer holdings are routinely OFAC-aligned via on-chain freeze authority; decentralized-issuer holdings have no central freeze party and present elevated typology uncertainty.`,
+        fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Information narrative supplement",
+        evidence_ids: [balancesRes.evidence.id],
+        score_contribution: baseScore,
+        metadata: { by_policy: byPolicy, total_stablecoin_usd: totalStablecoinUsd },
+      });
+    }
+
+    // ---- Rule: stablecoin_mica_emt_non_compliant ----
+    // EU compliance officer relevance: holdings in stablecoins not authorized
+    // as MiCA EMTs are restricted from EU CASP circulation post 2026-07-01.
+    const nonEmt = stablecoinHoldings.filter(
+      (h) =>
+        h.entry.mica_emt_status === "emt_not_filed" ||
+        h.entry.mica_emt_status === "discontinued",
+    );
+    const nonEmtUsd = nonEmt.reduce((s, h) => s + h.balanceUsd, 0);
+    if (nonEmtUsd >= RULE_CONFIG.stablecoin_mica_emt_non_compliant.threshold) {
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_mica_emt_non_compliant",
+        severity: RULE_CONFIG.stablecoin_mica_emt_non_compliant.severity,
+        title: `MiCA EMT non-compliant stablecoin exposure: $${nonEmtUsd.toFixed(0)} across ${nonEmt.length} asset${nonEmt.length === 1 ? "" : "s"}`,
+        rationale: `The subject wallet holds $${nonEmtUsd.toFixed(2)} in stablecoins (${nonEmt.map((h) => h.entry.ticker).join(", ")}) whose issuers have not obtained authorization as E-Money Tokens under MiCA Title III. Effective 2026-07-01, EU CASPs may not facilitate trades of non-EMT-authorized stablecoins for EU customers. If this wallet is a CASP-controlled or EU-customer wallet, this exposure indicates a Day-1 MiCA gap and should be flagged for risk review.`,
+        mica_reference: "MiCA Article 17 (EMT issuer authorization); MiCA Article 48 (transitional provisions through 2026-07-01)",
+        evidence_ids: [balancesRes.evidence.id],
+        score_contribution: Math.min(
+          RULE_CONFIG.stablecoin_mica_emt_non_compliant.weight,
+          Math.round((nonEmtUsd / RULE_CONFIG.stablecoin_mica_emt_non_compliant.threshold) * 5),
+        ),
+        metadata: {
+          non_emt_holdings: nonEmt.map((h) => ({
+            ticker: h.entry.ticker,
+            issuer: h.entry.issuer,
+            usd: h.balanceUsd,
+            mica_emt_status: h.entry.mica_emt_status,
+          })),
+        },
+      });
+    }
+  }
+
+  // ---- Rule: stablecoin_issuer_frozen_match (counterparty) ----
+  // Subject's tx counterparties match an address publicly frozen by
+  // Tether / Circle / Paxos. Distinct from OFAC SDN — issuer-level freeze
+  // is a softer but still material AML signal.
+  if (txsRes && txsRes.data.length > 0) {
+    const counterparties = new Set<string>();
+    for (const t of txsRes.data) {
+      if (t.from && t.from.toLowerCase() !== wallet.toLowerCase()) {
+        counterparties.add(t.from.toLowerCase());
+      }
+      if (t.to && t.to.toLowerCase() !== wallet.toLowerCase()) {
+        counterparties.add(t.to.toLowerCase());
+      }
+    }
+    const issuerFrozenHits: Array<{ addr: string; entry: ReturnType<typeof lookupIssuerFrozen> }> = [];
+    for (const cp of counterparties) {
+      const hit = lookupIssuerFrozen(cp);
+      if (hit) issuerFrozenHits.push({ addr: cp, entry: hit });
+    }
+    if (issuerFrozenHits.length >= RULE_CONFIG.stablecoin_issuer_frozen_match.threshold) {
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_issuer_frozen_match",
+        severity: RULE_CONFIG.stablecoin_issuer_frozen_match.severity,
+        title: `Counterparty publicly frozen by stablecoin issuer (${issuerFrozenHits.length} match${issuerFrozenHits.length === 1 ? "" : "es"})`,
+        rationale: `The subject wallet has on-chain interaction with ≥1 address that has been publicly frozen by a stablecoin issuer (Tether, Circle, or Paxos) via their on-chain freeze authority. Issuer-level freezes are a separate signal from OFAC SDN designation: they indicate the issuer's own AML/compliance team determined the address sufficiently risky to lock the asset balance. Recommend SAR escalation and request issuer freeze rationale documentation under MLAT or relevant regulator-to-regulator channels.`,
+        fatf_reference: "FATF Recommendation 16 (Wire Transfers / Travel Rule); FATF Recommendation 20 (STR filing)",
+        fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31z (Other suspicious activity)",
+        evidence_ids: [txsRes.evidence.id],
+        score_contribution: RULE_CONFIG.stablecoin_issuer_frozen_match.weight,
+        metadata: {
+          matches: issuerFrozenHits.map((h) => ({
+            address: h.addr,
+            issuer: h.entry?.frozen_by_issuer,
+            asset: h.entry?.asset,
+            reason: h.entry?.reason,
+            source: h.entry?.source,
+          })),
+        },
+      });
+    }
+
+    // ---- Rule: stablecoin_dprk_cluster_proximity ----
+    // Subject's tx counterparties match the OFAC SB0416 (2026-03-12) DPRK
+    // designation — these are STABLECOIN addresses (USDT on Ethereum/Tron)
+    // per the Treasury press release. This signal complements
+    // sanctions_adjacency by citing the stablecoin-laundering typology
+    // documented by ZachXBT (July 2025) and FATF (June 2025 Targeted
+    // Update §IT-worker schemes), not just the sanctions list.
+    const sb0416StablecoinHits = [];
+    for (const cp of counterparties) {
+      const sdnHit = isSdnAddress(cp);
+      if (
+        sdnHit &&
+        (sdnHit.label.includes("Amnokgang") ||
+          sdnHit.label.includes("Yun Song Guk") ||
+          sdnHit.label.includes("Sim Hyon Sop")) &&
+        sdnHit.source.includes("SB0416")
+      ) {
+        sb0416StablecoinHits.push({ addr: cp, entry: sdnHit });
+      }
+    }
+    if (sb0416StablecoinHits.length >= RULE_CONFIG.stablecoin_dprk_cluster_proximity.threshold) {
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_dprk_cluster_proximity",
+        severity: RULE_CONFIG.stablecoin_dprk_cluster_proximity.severity,
+        title: `DPRK stablecoin laundering cluster proximity (${sb0416StablecoinHits.length} address${sb0416StablecoinHits.length === 1 ? "" : "es"} from SB0416)`,
+        rationale: `The subject wallet has direct on-chain interaction with ≥1 stablecoin (USDT) address designated by OFAC SB0416 on 2026-03-12 as part of the DPRK IT-worker laundering network (Amnokgang, Yun Song Guk, or Sim Hyon Sop). This is consistent with the stablecoin-laundering typology documented by ZachXBT in July 2025 ("DPRK IT-worker USDC clusters") and referenced in the FATF Targeted Update of June 2025 §IT-worker schemes. The signal is complementary to sanctions_adjacency — it specifically identifies the stablecoin laundering pattern, not merely the SDN match.`,
+        fatf_reference: "FATF Recommendation 7 (Targeted Financial Sanctions); FATF Targeted Update June 2025 §IT-worker schemes",
+        fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31y (OFAC sanctioned country/entity); 32a (Sanctions evasion structuring)",
+        evidence_ids: [txsRes.evidence.id],
+        score_contribution: RULE_CONFIG.stablecoin_dprk_cluster_proximity.weight,
+        metadata: {
+          matches: sb0416StablecoinHits.map((h) => ({
+            address: h.addr,
+            label: h.entry?.label,
+            source: h.entry?.source,
+          })),
+        },
+      });
+    }
+
+    // ---- Rule: stablecoin_velocity_typology ----
+    // High velocity of stablecoin transactions in the last 24h is a known
+    // typology element of DPRK IT-worker laundering and Asian scam-center
+    // funnel patterns. Differs from generic high_velocity by filtering for
+    // stablecoin-only tx via contract address matching.
+    // Build a set of registry stablecoin contracts on this chain for fast
+    // counterparty matching.
+    const stablecoinContractsOnChain = new Set<string>();
+    for (const entry of STABLECOIN_REGISTRY) {
+      const a = entry.evm_addresses[chain as keyof typeof entry.evm_addresses];
+      if (a) stablecoinContractsOnChain.add(a.toLowerCase());
+    }
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const last24hStablecoinTx = txsRes.data.filter((t) => {
+      if (!t.blockSignedAt) return false;
+      if (new Date(t.blockSignedAt).getTime() <= dayAgo) return false;
+      // counterparty is a stablecoin contract address
+      return (
+        stablecoinContractsOnChain.has(t.to?.toLowerCase() ?? "") ||
+        stablecoinContractsOnChain.has(t.from?.toLowerCase() ?? "")
+      );
+    });
+    if (last24hStablecoinTx.length >= RULE_CONFIG.stablecoin_velocity_typology.threshold) {
+      signals.push({
+        id: newSignalId(),
+        type: "stablecoin_velocity_typology",
+        severity: RULE_CONFIG.stablecoin_velocity_typology.severity,
+        title: `Stablecoin velocity typology: ${last24hStablecoinTx.length} stablecoin transactions in 24h`,
+        rationale: `The subject wallet exhibits high stablecoin transactional velocity (${last24hStablecoinTx.length} stablecoin-contract interactions in the last 24-hour window, threshold ${RULE_CONFIG.stablecoin_velocity_typology.threshold}). Sustained stablecoin velocity from non-protocol addresses is a typology element of DPRK IT-worker laundering networks (ZachXBT July 2025 documentation), Asian scam-center funnel accounts (Chainalysis Crypto Crime Report 2026 Apr 24 update), and structuring under FinCEN's funnel-account guidance. Recommend velocity baseline comparison against the wallet's 30-day mean.`,
+        fatf_reference: "FATF Recommendation 16 (Wire Transfers); FATF Targeted Update June 2025 §IT-worker schemes",
+        fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31a (Funnel Account); 32a (Sanctions evasion structuring)",
+        evidence_ids: [txsRes.evidence.id],
+        score_contribution: RULE_CONFIG.stablecoin_velocity_typology.weight,
+        metadata: { stablecoin_tx_24h: last24hStablecoinTx.length },
+      });
+    }
+  }
+
   // Coverage advisory for Solana — be honest in the dossier itself, not just
   // the README. Compliance reviewers should be able to see at a glance that
   // this dossier sampled less data than an EVM dossier would.
@@ -331,9 +598,18 @@ export async function buildDossier(
       rule_pack_sha256: RULE_PACK_SHA256,
       sdn_list_version: SDN_LIST_VERSION,
       goldrush_api_version: GOLDRUSH_SDK_VERSION,
-      generator: { name: "sentry402", version: "0.1.0" },
+      generator: { name: "sentry402", version: "0.2.0" },
       generation_id: newGenerationId(),
       generated_at: new Date().toISOString(),
+      // Stablecoin-specific dataset versions pinned for FCA 2024
+      // reproducibility. Bumping STABLECOIN_REGISTRY_VERSION is the
+      // canonical way to record an issuer-policy or contract-address
+      // change across the registry.
+      stablecoin_registry_version: STABLECOIN_REGISTRY_VERSION,
+      issuer_frozen_list_version: ISSUER_FROZEN_LIST_VERSION,
+    } as DossierMetadata & {
+      stablecoin_registry_version: string;
+      issuer_frozen_list_version: string;
     },
   };
   return dossier;

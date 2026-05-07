@@ -61,7 +61,13 @@ export type SignalType =
   | "mixer_proximity"
   | "high_velocity"
   | "structuring_pattern"
-  | "coverage_advisory";
+  | "coverage_advisory"
+  | "stablecoin_issuer_compliance"
+  | "stablecoin_non_cooperative_issuer"
+  | "stablecoin_mica_emt_non_compliant"
+  | "stablecoin_issuer_frozen_match"
+  | "stablecoin_velocity_typology"
+  | "stablecoin_dprk_cluster_proximity";
 
 /**
  * Signal — a single risk finding. Cites Evidence ids.

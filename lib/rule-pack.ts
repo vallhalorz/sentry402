@@ -7,7 +7,16 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.1.3-mvp";
+export const RULE_PACK_VERSION = "0.2.0-mvp";
+// 0.2.0: stablecoin compliance signals. Six new cited rules wiring the new
+//        STABLECOIN_REGISTRY (issuer cooperation profile + MiCA EMT status)
+//        and ISSUER_FROZEN_LIST (Tether/Circle/Paxos publicly-disclosed
+//        on-chain freezes). Six new SignalType entries. Citation chain:
+//        CSIS December 2025 GENIUS Act FPSI report, Tether/Circle/Paxos
+//        quarterly transparency reports, ESMA MiCA EMT register, FATF
+//        Targeted Update June 2025, Treasury SB0416 March 12, 2026
+//        DPRK stablecoin designation. Added STABLECOIN_REGISTRY_VERSION
+//        and ISSUER_FROZEN_LIST_VERSION pinning to dossier metadata.
 // 0.1.3: added Solana branch with coverage_advisory signal. Solana wallets
 //        run only the balances endpoint + active SDN direct-match check, and
 //        the dossier carries an explicit advisory that full SPL/decoded-tx
@@ -79,6 +88,37 @@ export const RULE_CONFIG = {
     weight: 12,
     severity: "medium",
     threshold: 50, // tx in last 24h
+  },
+  // ===== Stablecoin compliance rules (0.2.0-mvp) =====
+  stablecoin_issuer_compliance: {
+    weight: 8,
+    severity: "low", // informational profile of stablecoin holdings
+    threshold: 100, // USD value of stablecoin holdings to surface signal
+  },
+  stablecoin_non_cooperative_issuer: {
+    weight: 50, // A7A5 / sanctions-evasion vehicle holdings
+    severity: "critical",
+    threshold: 1, // any holding
+  },
+  stablecoin_mica_emt_non_compliant: {
+    weight: 10, // EU CASP-relevant only — informational outside EU
+    severity: "medium",
+    threshold: 1000, // USD concentration in non-EMT stablecoins
+  },
+  stablecoin_issuer_frozen_match: {
+    weight: 35, // counterparty was frozen by issuer — material AML signal
+    severity: "high",
+    threshold: 1,
+  },
+  stablecoin_velocity_typology: {
+    weight: 18, // DPRK IT-worker funnel pattern
+    severity: "medium",
+    threshold: 20, // stablecoin tx in last 24h
+  },
+  stablecoin_dprk_cluster_proximity: {
+    weight: 40, // direct interaction with SB0416 stablecoin addresses
+    severity: "critical",
+    threshold: 1,
   },
 } as const satisfies Record<string, RuleConfig>;
 

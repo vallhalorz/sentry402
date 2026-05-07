@@ -79,6 +79,21 @@ The x402 wrapper uses [`x402-next`](https://www.npmjs.com/package/x402-next) (Co
 
 To configure your own receiving wallet, set `X402_PAY_TO_ADDRESS=0x…` in `.env.local`. Without it the endpoint pays to the zero address (demo placeholder).
 
+## Stablecoin compliance signals (rule pack 0.2.0)
+
+Sentry402 carries a curated stablecoin issuer registry and a publicly-disclosed issuer-freeze list. Six cited rules surface signals that compliance officers actually need:
+
+1. **`stablecoin_issuer_compliance`** — informational profile of the wallet's stablecoin holdings broken down by issuer freeze-cooperation policy (Tether, Circle, Paxos, MakerDAO, etc.). Pulls from each issuer's quarterly transparency report.
+2. **`stablecoin_non_cooperative_issuer`** — critical-severity flag if the wallet holds A7A5 or any sanctions-evasion-vehicle stablecoin per CSIS December 2025 FPSI gap analysis.
+3. **`stablecoin_mica_emt_non_compliant`** — medium-severity for EU CASPs: holdings in stablecoins whose issuers have not obtained MiCA EMT authorization (USDT, FDUSD, BUSD, etc.). Effective 2026-07-01, EU CASPs cannot facilitate trades of non-EMT stablecoins for EU customers.
+4. **`stablecoin_issuer_frozen_match`** — high-severity: counterparty has been publicly frozen by Tether / Circle / Paxos via on-chain freeze authority. Distinct from OFAC SDN — issuer freezes indicate the issuer's own AML team determined the address risky enough to lock the asset.
+5. **`stablecoin_velocity_typology`** — medium-severity: high stablecoin transactional velocity in the last 24 hours. Typology element of DPRK IT-worker laundering networks (ZachXBT July 2025 documentation, FATF Targeted Update June 2025 §IT-worker schemes) and Asian scam-center funnel patterns (Chainalysis Crypto Crime Report 2026).
+6. **`stablecoin_dprk_cluster_proximity`** — critical-severity: subject has direct interaction with the 21 stablecoin (USDT) addresses designated by OFAC SB0416 on 2026-03-12 as part of the DPRK IT-worker network. Complements `sanctions_adjacency` by citing the stablecoin-laundering typology, not just the SDN match.
+
+Every signal is citation-bound to its source: Tether/Circle/Paxos transparency reports, ESMA MiCA EMT register, CSIS GENIUS Act FPSI report, FATF Targeted Update, Treasury press release SB0416, ZachXBT public research thread.
+
+The dossier metadata pins `stablecoin_registry_version` and `issuer_frozen_list_version` alongside the rule pack version and OFAC SDN list version. Re-running the same wallet against the same versions returns a deterministic dossier — FCA 2024 reproducibility extended to stablecoin compliance.
+
 ## Solana coverage — honest scope
 
 GoldRush Foundational API exposes one Solana endpoint at this time: token balances. Sentry402 handles Solana wallets by running just that endpoint plus the active-OFAC direct-match check, and the dossier itself carries a `coverage_advisory` signal so a compliance reviewer sees at a glance which surfaces were sampled. Full SPL approval inventory, decoded transaction history, and counterparty-graph tracing on Solana require a Helius DAS API supplement — on the roadmap, out of MVP scope. We don't pretend otherwise. EVM chains (Ethereum, Base, Polygon, BNB, Arbitrum, Optimism) have full coverage today.
