@@ -23,8 +23,7 @@ export default function OG() {
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 80,
-          background:
-            "radial-gradient(ellipse at top left, rgba(212,160,23,0.18) 0%, transparent 55%), radial-gradient(ellipse at bottom right, rgba(30,64,175,0.12) 0%, transparent 55%), #fafaf7",
+          backgroundColor: "#fafaf7",
           fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
           color: "#0b0f17",
         }}
