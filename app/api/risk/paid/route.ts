@@ -29,6 +29,9 @@ import { buildDossier } from "@/lib/risk-engine";
 import { cacheDossier } from "@/lib/store";
 import type { ChainName } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const VALID_CHAINS: ChainName[] = [
   "eth-mainnet",
   "base-mainnet",

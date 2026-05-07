@@ -12,6 +12,10 @@ import { buildDossier } from "@/lib/risk-engine";
 import { cacheDossier } from "@/lib/store";
 import type { ChainName } from "@/lib/types";
 
+// Force runtime evaluation — never prerender. We hit GoldRush per request.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const VALID_CHAINS: ChainName[] = [
   "eth-mainnet",
   "base-mainnet",
