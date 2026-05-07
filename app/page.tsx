@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type {
   ChainName,
+  CounterpartyAggregate,
   RiskDossier,
   Severity,
   WalletActivity,
@@ -1114,114 +1115,6 @@ function SubjectContext({ d }: { d: RiskDossier }) {
       {hasHoldings && <HoldingsCard holdings={d.subject.holdings ?? []} chain={d.subject.chain} />}
       {hasActivity && <ActivityCard activity={d.subject.recent_activity ?? []} chain={d.subject.chain} />}
     </section>
-  );
-}
-
-// Kept for potential reuse on the screening tab in the future. Not currently
-// rendered — the counterparty surface lives on its own tab now.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CounterpartiesCard({
-  counterparties,
-  subjectWallet,
-  chain,
-}: {
-  counterparties: CounterpartyAggregate[];
-  subjectWallet: string;
-  chain: ChainName;
-}) {
-  const totalInUsd = counterparties.reduce((s, c) => s + c.inbound_usd_total, 0);
-  const totalOutUsd = counterparties.reduce((s, c) => s + c.outbound_usd_total, 0);
-
-  function downloadCsv() {
-    const csv = buildCounterpartyCsv(counterparties, subjectWallet, chain);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const safeWallet = subjectWallet.slice(0, 10);
-    a.download = `sentry402-counterparties-${chain}-${safeWallet}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  const top = counterparties.slice(0, 4);
-  const remaining = counterparties.length - top.length;
-
-  return (
-    <div className="rounded-xl border border-paper-200 bg-white p-5 shadow-card space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs uppercase tracking-wider text-ink-500 font-medium">
-          Counterparties · {counterparties.length} unique
-        </h3>
-        <button
-          type="button"
-          onClick={downloadCsv}
-          className="inline-flex items-center gap-1.5 rounded-md bg-ink-900 text-paper-50 px-2.5 py-1 text-xs font-medium hover:bg-ink-800 transition no-print"
-          title="Download all counterparty wallets as CSV"
-          aria-label="Download counterparties as CSV"
-        >
-          <svg aria-hidden viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
-            <path d="M8 1.5a.75.75 0 01.75.75v7.69l1.97-1.97a.75.75 0 011.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 9.03a.75.75 0 011.06-1.06l1.97 1.97V2.25A.75.75 0 018 1.5z" />
-            <path d="M3 12.5a.75.75 0 01.75.75V14a.5.5 0 00.5.5h7.5a.5.5 0 00.5-.5v-.75a.75.75 0 011.5 0V14a2 2 0 01-2 2h-7.5a2 2 0 01-2-2v-.75a.75.75 0 01.75-.75z" />
-          </svg>
-          CSV
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-md bg-signal-low/10 px-2 py-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-signal-low font-semibold">Inbound</p>
-          <p className="hash text-ink-700 tabular-nums">
-            ${totalInUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </p>
-        </div>
-        <div className="rounded-md bg-signal-high/10 px-2 py-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-signal-high font-semibold">Outbound</p>
-          <p className="hash text-ink-700 tabular-nums">
-            ${totalOutUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </p>
-        </div>
-      </div>
-      <ul className="divide-y divide-paper-200">
-        {top.map((c) => (
-          <li key={c.address} className="flex items-center gap-2 py-1.5 text-xs">
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 rounded-full shrink-0"
-              style={{
-                backgroundColor:
-                  c.inbound_count >= c.outbound_count
-                    ? "var(--tw-color-signal-low, #10b981)"
-                    : "var(--tw-color-signal-high, #f97316)",
-              }}
-            />
-            <a
-              href={addressUrl(chain, c.address)}
-              target="_blank"
-              rel="noreferrer"
-              className="hash text-ink-700 hover:text-brand truncate transition flex-1 min-w-0"
-              title={c.address}
-            >
-              {c.label ?? `${c.address.slice(0, 8)}...${c.address.slice(-4)}`}
-            </a>
-            <span className="hash text-ink-500 tabular-nums shrink-0">
-              {c.inbound_count + c.outbound_count}×
-            </span>
-          </li>
-        ))}
-        {remaining > 0 && (
-          <li className="py-1.5 text-xs text-ink-400">
-            +{remaining} more in CSV
-          </li>
-        )}
-      </ul>
-      <p className="text-[11px] text-ink-400 leading-relaxed">
-        Aggregated from the most recent ~100 transactions sampled by GoldRush. CSV columns:
-        address, label, inbound count, outbound count, inbound USD, outbound USD, net USD, first
-        seen, last seen.
-      </p>
-    </div>
   );
 }
 
