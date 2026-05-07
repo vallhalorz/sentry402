@@ -12,9 +12,47 @@ body {
   color: #0b0f17;
 }
 
-/* Mono font for hashes and addresses — easier to read at a glance. */
+/* Mono font for hashes and addresses. Easier to read at a glance, helps
+   reviewer-class users scan large hex blocks. */
 .hash {
   font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/* Focus ring: visible for keyboard users, suppressed for mouse clicks.
+   Improves accessibility without making mouse-driven UX feel noisy. */
+:focus-visible {
+  outline: 2px solid #1e40af;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Subtle hero gradient. Kept low-saturation so the page still feels like
+   a compliance tool, not a marketing landing. */
+.hero-gradient {
+  background:
+    radial-gradient(ellipse at top left, rgba(212, 160, 23, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(30, 64, 175, 0.06) 0%, transparent 60%);
+}
+
+/* Severity badge animation: subtle pulse for critical only. Draws the eye
+   without being a distraction. */
+@keyframes pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+.severity-critical-pulse {
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+/* Score arc background. Used for the circular score display. */
+.score-arc {
+  background: conic-gradient(
+    from 0deg,
+    var(--score-color, #6366f1) 0%,
+    var(--score-color, #6366f1) var(--score-pct, 0%),
+    #e7e5dc var(--score-pct, 0%),
+    #e7e5dc 100%
+  );
 }
