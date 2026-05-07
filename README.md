@@ -45,7 +45,7 @@ The deliberate constraint: **no LLM-generated facts in the dossier.** The determ
 - Next.js 15 + TypeScript + Tailwind
 - `@covalenthq/client-sdk` for GoldRush Foundational API
 - GoldRush Streaming API for real-time drainer detection (Telegram bot)
-- `x402-next` middleware for pay-per-call settlement on Base
+- Hand-rolled x402 payment gate for `/api/risk/paid` (matches the protocol spec; we tried `x402-next` first but hit Next 15 ESM resolution issues)
 - Local OFAC SDN feed (refreshed daily from Treasury)
 
 ## GoldRush endpoints used
@@ -75,11 +75,11 @@ curl -i -H 'X-PAYMENT: <signed-payment-payload>' \
   'http://localhost:3000/api/risk/paid?chain=eth-mainnet&wallet=0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D'
 ```
 
-The x402 wrapper uses [`x402-next`](https://www.npmjs.com/package/x402-next) (Coinbase, Apache-2.0). Settlement runs on Base Sepolia testnet — GoldRush's own x402 service is also testnet-only today, with mainnet "coming soon" per their docs. We don't pretend testnet USDC is real settlement; the demo is testnet-honest.
+The x402 wrapper is hand-rolled in `app/api/risk/paid/route.ts` — the same approach AgentGuard402 uses. We initially tried [`x402-next`](https://www.npmjs.com/package/x402-next) but hit Next 15 ESM resolution issues; the protocol is small enough that 60 lines of Next route handler covers the 402-with-`accepts`-body and the 200-with-`x-payment-response`-header round-trip. Settlement runs on Base Sepolia testnet — GoldRush's own x402 service is also testnet-only today, with mainnet "coming soon" per their docs. We don't pretend testnet USDC is real settlement; the demo is testnet-honest.
 
 To configure your own receiving wallet, set `X402_PAY_TO_ADDRESS=0x…` in `.env.local`. Without it the endpoint pays to the zero address (demo placeholder).
 
-## Stablecoin compliance signals (rule pack 0.2.0)
+## Stablecoin compliance signals
 
 Sentry402 carries a curated stablecoin issuer registry and a publicly-disclosed issuer-freeze list. Six cited rules surface signals that compliance officers actually need:
 
@@ -113,6 +113,21 @@ npm run agent:watch -- 0xcB74... 0x9Be5... 0x76EA...
 TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… npm run agent -- 0xcB74…
 ```
 
+## Coverage matrix
+
+`scripts/test-coverage.mjs` runs every entry in our SDN seed list plus a curated set of clean wallets through the engine and writes a markdown report to [`TESTING.md`](./TESTING.md). Cohorts:
+
+- **Active OFAC SDN** — DPRK SB0416 (2026-03-12) + Lazarus (ByBit 2025-02, Ronin Bridge 2022-04). Expected verdict: `block`.
+- **Tornado Cash historic** — original 2022-08-08 OFAC EO 13694 designation, delisted 2025-03-21 per Texas Federal Court permanent injunction. Expected: `tornado_cash_historic_exposure` signal (informational), verdict stays `allow`.
+- **Clean wallets** — high-profile named addresses; any non-`allow` verdict is recorded as a false positive.
+
+```bash
+npm run test:coverage              # against production
+npm run test:coverage:local        # against http://localhost:3000
+```
+
+Exit code is non-zero if any active SDN was missed or any clean wallet false-positived — suitable for CI gating.
+
 ## Reproducibility
 
 Every dossier carries:
@@ -141,4 +156,4 @@ In active development for the May 2026 GoldRush hackathon. Submission deadline 2
 
 ## License
 
-MIT (planned). For the hackathon submission this repo is public; production deployment licensing TBD.
+MIT — see [LICENSE](./LICENSE).

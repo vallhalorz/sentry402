@@ -10,10 +10,12 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "agent": "node agent/sentry402-agent.mjs",
-    "agent:watch": "node agent/sentry402-agent.mjs --watch"
+    "agent:watch": "node agent/sentry402-agent.mjs --watch",
+    "test:coverage": "SENTRY_MODE=1 AGENTGUARD_URL=https://sentry402.vercel.app node scripts/test-coverage.mjs",
+    "test:coverage:local": "SENTRY_MODE=1 AGENTGUARD_URL=http://localhost:3000 node scripts/test-coverage.mjs"
   },
   "dependencies": {
-    "@covalenthq/client-sdk": "^2.2.3",
+    "@covalenthq/client-sdk": "^2.3.8",
     "next": "^15.5.16",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
