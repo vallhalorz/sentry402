@@ -8,8 +8,10 @@
 
 Built for the [Covalent GoldRush hackathon](https://earn.superteam.fun/listing/build-with-goldrush-track-powered-by-covalent) — Compliance & Risk track. May 2026.
 
-Live demo: <!-- replace with vercel URL after deploy --> *deploying soon*
-Repo: <https://github.com/vallhalorz/sentry402>
+**Live demo:** <https://sentry402.vercel.app>
+**Repo:** <https://github.com/vallhalorz/sentry402>
+
+Try the OFAC SDN demo immediately — paste `0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D` (Amnokgang Technology Development Company, DPRK, OFAC-designated 2026-03-12) on Ethereum chain. Score returns 100/100 critical with two cited indicators and a regulator-defensible evidence appendix.
 
 ## What it is, in one screenshot's worth
 
