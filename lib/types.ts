@@ -51,6 +51,7 @@ export type SignalType =
   | "unlimited_approval"
   | "drainer_pattern"
   | "sanctions_adjacency"
+  | "sanctions_indirect_exposure"
   | "ofac_direct_match"
   | "tornado_cash_historic_exposure"
   | "counterparty_concentration"

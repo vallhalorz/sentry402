@@ -31,6 +31,8 @@ import {
   getApprovals,
   getDeepCounterpartySet,
   getEarliestTransactionDate,
+  getErc20TransferCounterparties,
+  getMaterialTwoHopCounterparties,
   getRecentTransactions,
   getTokenBalances,
   GOLDRUSH_SDK_VERSION,
@@ -78,6 +80,51 @@ export async function buildDossier(
   // tell us about OFAC designations. We construct a synthetic Evidence record
   // pointing to the authoritative source.
   const directHit = isSdnAddress(wallet);
+  // Direct hit on the historic-concern (Tornado Cash post-delisting) list:
+  // emit informational signal but no critical block. The address is not
+  // on the active OFAC SDN list, but a compliance officer reviewing an
+  // outbound transfer to a known mixer pool will still want to see it.
+  // Distinct from `tornado_cash_historic_exposure` via counterparty,
+  // because here the subject IS the mixer pool, not someone who once
+  // touched it.
+  if (directHit && isHistoricConcern(directHit)) {
+    const histEvidence: Evidence = {
+      id: newEvidenceId(),
+      endpoint: "internal:sdn_lookup",
+      endpoint_url: "https://home.treasury.gov/policy-issues/financial-sanctions/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists",
+      request_params: { wallet, sdn_list_version: SDN_LIST_VERSION, lookup: "historic_concern" },
+      response_excerpt: {
+        match: {
+          address: directHit.address,
+          label: directHit.label,
+          category: directHit.category,
+          source: directHit.source,
+          delisted_at: directHit.delisted_at,
+        },
+      },
+      tx_hashes: [],
+      block_heights: [],
+      chain,
+      goldrush_api_version: GOLDRUSH_SDK_VERSION,
+      fetched_at: new Date().toISOString(),
+    };
+    evidence[histEvidence.id] = histEvidence;
+    signals.push({
+      id: newSignalId(),
+      type: "tornado_cash_historic_exposure",
+      severity: RULE_CONFIG.tornado_cash_historic_exposure.severity,
+      title: `Subject wallet is a known historic mixer address: ${directHit.label}`,
+      rationale: `The destination is on the historic Tornado Cash address list (originally OFAC-sanctioned 2022-08-08 under EO 13694, delisted 2025-03-21 with Texas Federal Court permanently enjoining re-listing 2025-04-29). The address is NOT currently sanctioned, but routing funds directly to a known mixer pool is a typology indicator for layering under FATF Recommendation 16 and is treated as a structural red flag by most CASP compliance teams. Recommend agent escalates to a human approver even though this verdict will be \`allow\` from a strict-sanctions perspective.`,
+      evidence_ids: [histEvidence.id],
+      score_contribution: RULE_CONFIG.tornado_cash_historic_exposure.weight,
+      metadata: {
+        sdn_label: directHit.label,
+        sdn_category: directHit.category,
+        sdn_source: directHit.source,
+        delisted_at: directHit.delisted_at,
+      },
+    });
+  }
   if (directHit && isActiveSanctions(directHit)) {
     const sdnEvidence: Evidence = {
       id: newEvidenceId(),
@@ -124,13 +171,34 @@ export async function buildDossier(
   // return empty for solana-mainnet, so we skip them and add a coverage
   // advisory signal further down.
   const isSolana = chain === "solana-mainnet";
-  const [balancesRes, approvalsRes, txsRes, earliestRes, deepCpRes] = await Promise.all([
-    safe(() => getTokenBalances(chain, wallet)),
-    isSolana ? Promise.resolve(null) : safe(() => getApprovals(chain, wallet)),
-    isSolana ? Promise.resolve(null) : safe(() => getRecentTransactions(chain, wallet)),
-    isSolana ? Promise.resolve(null) : safe(() => getEarliestTransactionDate(chain, wallet)),
-    isSolana ? Promise.resolve(null) : safe(() => getDeepCounterpartySet(chain, wallet, 5)),
-  ]);
+  // Pick the major stablecoin contracts on this chain to ERC-20-sweep — that
+  // is where SB0416 / DPRK and most issuer-frozen counterparties live, since
+  // those entries are themselves USDT/USDC addresses that interact via
+  // Transfer event logs (NOT top-level transactions).
+  const stablecoinSweepContracts: string[] = [];
+  if (!isSolana) {
+    for (const entry of STABLECOIN_REGISTRY) {
+      // Only sweep cooperative-issuer stablecoins (USDT/USDC) — those are
+      // the rails that DPRK and OFAC-frozen counterparties actually appear
+      // on. A7A5 etc. don't have meaningful transfer history on EVM yet.
+      if (entry.ticker === "USDT" || entry.ticker === "USDC") {
+        const c = entry.evm_addresses[chain as keyof typeof entry.evm_addresses];
+        if (c) stablecoinSweepContracts.push(c);
+      }
+    }
+  }
+
+  const [balancesRes, approvalsRes, txsRes, earliestRes, deepCpRes, ...erc20CpResults] =
+    await Promise.all([
+      safe(() => getTokenBalances(chain, wallet)),
+      isSolana ? Promise.resolve(null) : safe(() => getApprovals(chain, wallet)),
+      isSolana ? Promise.resolve(null) : safe(() => getRecentTransactions(chain, wallet)),
+      isSolana ? Promise.resolve(null) : safe(() => getEarliestTransactionDate(chain, wallet)),
+      isSolana ? Promise.resolve(null) : safe(() => getDeepCounterpartySet(chain, wallet, 5)),
+      ...stablecoinSweepContracts.map((contract) =>
+        safe(() => getErc20TransferCounterparties(chain, wallet, contract, 3)),
+      ),
+    ]);
 
   // Register evidence for every successful call (even rules that don't fire
   // benefit from having the evidence in the dossier — auditors can confirm we
@@ -140,6 +208,9 @@ export async function buildDossier(
   if (txsRes) evidence[txsRes.evidence.id] = txsRes.evidence;
   if (earliestRes) evidence[earliestRes.evidence.id] = earliestRes.evidence;
   if (deepCpRes) evidence[deepCpRes.evidence.id] = deepCpRes.evidence;
+  for (const r of erc20CpResults) {
+    if (r) evidence[r.evidence.id] = r.evidence;
+  }
 
   // ---- Rule: approval_value_at_risk + unlimited_approval + drainer_pattern ----
   if (approvalsRes && approvalsRes.data.length > 0) {
@@ -215,26 +286,33 @@ export async function buildDossier(
   }
 
   // ---- Rule: sanctions_adjacency_hop1 + tornado_cash_historic ----
-  // Use the deep counterparty sweep (up to 5 pages / ~500 tx) when available
-  // so we catch sanctioned interactions older than the activity sample. Falls
-  // back to the recent-100 set if the deep call failed.
-  const sanctionsCounterpartySet = deepCpRes
-    ? new Set(deepCpRes.data.addresses)
-    : (() => {
-        const s = new Set<string>();
-        if (txsRes) {
-          for (const t of txsRes.data) {
-            if (t.from && t.from.toLowerCase() !== wallet.toLowerCase())
-              s.add(t.from.toLowerCase());
-            if (t.to && t.to.toLowerCase() !== wallet.toLowerCase())
-              s.add(t.to.toLowerCase());
-          }
-        }
-        return s;
-      })();
+  // Build the sanctions counterparty set from THREE sources merged:
+  // (1) Deep top-level tx sweep (~500 tx, up to 5 pages).
+  // (2) ERC-20 transfer sweep on USDT/USDC contracts (~3 pages each).
+  //     Critical for SB0416 / DPRK detection because OFAC SDN addresses
+  //     in that designation are USDT contracts — they show up as the
+  //     to/from of Transfer event logs, NOT as top-level tx counterparties.
+  // (3) Fallback to first-page tx if deep call failed.
+  const sanctionsCounterpartySet = new Set<string>();
+  if (deepCpRes) {
+    for (const a of deepCpRes.data.addresses) sanctionsCounterpartySet.add(a);
+  } else if (txsRes) {
+    for (const t of txsRes.data) {
+      if (t.from && t.from.toLowerCase() !== wallet.toLowerCase())
+        sanctionsCounterpartySet.add(t.from.toLowerCase());
+      if (t.to && t.to.toLowerCase() !== wallet.toLowerCase())
+        sanctionsCounterpartySet.add(t.to.toLowerCase());
+    }
+  }
+  for (const r of erc20CpResults) {
+    if (r) {
+      for (const a of r.data.addresses) sanctionsCounterpartySet.add(a);
+    }
+  }
   const sanctionsEvidenceIds = [
     ...(deepCpRes ? [deepCpRes.evidence.id] : []),
     ...(txsRes ? [txsRes.evidence.id] : []),
+    ...erc20CpResults.filter(Boolean).map((r) => r!.evidence.id),
   ];
 
   if (txsRes && txsRes.data.length > 0) {
@@ -249,9 +327,15 @@ export async function buildDossier(
     }
 
     if (sanctionsHits.length > 0) {
-      const depthNote = deepCpRes
-        ? ` Sanctions sweep examined ${deepCpRes.data.transactions_examined} transactions across ${deepCpRes.data.pages_scanned} GoldRush pages.`
-        : "";
+      const tlScan = deepCpRes ? deepCpRes.data.transactions_examined : 0;
+      const ercScan = erc20CpResults.reduce(
+        (s, r) => s + (r ? r.data.transactions_examined : 0),
+        0,
+      );
+      const depthNote =
+        deepCpRes || erc20CpResults.some(Boolean)
+          ? ` Sanctions sweep examined ${tlScan} top-level transactions and ${ercScan} stablecoin (USDT/USDC) transfer events across ${stablecoinSweepContracts.length} contracts.`
+          : "";
       signals.push({
         id: newSignalId(),
         type: "sanctions_adjacency",
@@ -690,6 +774,93 @@ export async function buildDossier(
       (a, b) =>
         b.inbound_usd_total + b.outbound_usd_total - (a.inbound_usd_total + a.outbound_usd_total),
     );
+  }
+
+  // ---- Rule: sanctions_indirect_exposure (2-hop, materially gated) ----
+  // FATF Recommendation 16 / INFO Layered-Funds typology framing: a
+  // counterparty-of-counterparty link is evidentiary only when the 1-hop
+  // edge carries material flow ($1k+). Below that, "I once interacted with
+  // someone who once interacted with a sanctioned wallet" is below SAR
+  // threshold and just noise. Mirrors Chainalysis Reactor / TRM Tactical
+  // default exposure thresholds.
+  //
+  // Cost-bounded: caps at 30 1-hop walks (~30 GoldRush calls, ~5s p95).
+  // Skipped on Solana since 1-hop USD aggregates are not computed for
+  // Solana subjects (no decoded tx coverage).
+  if (
+    !isSolana &&
+    counterpartyAggregates &&
+    counterpartyAggregates.length > 0
+  ) {
+    const materialOneHop = counterpartyAggregates
+      .map((a) => ({
+        address: a.address,
+        total_flow_usd: a.inbound_usd_total + a.outbound_usd_total,
+      }))
+      .filter(
+        (a) => a.total_flow_usd >= RULE_CONFIG.sanctions_indirect_exposure_2hop.threshold,
+      );
+
+    if (materialOneHop.length > 0) {
+      const twoHopRes = await safe(() =>
+        getMaterialTwoHopCounterparties(chain, wallet, materialOneHop, {
+          materialThresholdUsd: RULE_CONFIG.sanctions_indirect_exposure_2hop.threshold,
+          maxHopsToWalk: 30,
+        }),
+      );
+      if (twoHopRes) {
+        evidence[twoHopRes.evidence.id] = twoHopRes.evidence;
+        // Intersect with active SDN. We deliberately ignore historic
+        // (Tornado Cash) at hop 2 — historic exposure at depth becomes
+        // pure noise. Active SDN at hop 2 is still material.
+        const indirectActiveHits = twoHopRes.data.matches.filter((m) => {
+          const sdnEntry = isSdnAddress(m.hit);
+          return sdnEntry && isActiveSanctions(sdnEntry);
+        });
+        // Dedupe by hit address to avoid double-counting the same SDN
+        // address surfaced through multiple via-paths. Keep the highest-
+        // flow via for each unique hit.
+        const byHit = new Map<string, (typeof indirectActiveHits)[number]>();
+        for (const m of indirectActiveHits) {
+          const k = m.hit.toLowerCase();
+          const ex = byHit.get(k);
+          if (!ex || m.via_flow_usd > ex.via_flow_usd) byHit.set(k, m);
+        }
+        const uniqueIndirectHits = [...byHit.values()];
+        if (uniqueIndirectHits.length > 0) {
+          // Hop-2 hits are high (not critical) by design — Hop-1 stays
+          // critical (saturating at 60), Hop-2 medium-high (35) so a 2-hop
+          // chain alone doesn't render the same verdict as a direct match
+          // but still flags for SAR review.
+          signals.push({
+            id: newSignalId(),
+            type: "sanctions_indirect_exposure",
+            severity: RULE_CONFIG.sanctions_indirect_exposure_2hop.severity,
+            title: `Indirect (2-hop) sanctions exposure: ${uniqueIndirectHits.length} active SDN address${uniqueIndirectHits.length === 1 ? "" : "es"} reachable via material counterparty`,
+            rationale: `The subject wallet has a material 1-hop counterparty (≥$${RULE_CONFIG.sanctions_indirect_exposure_2hop.threshold.toLocaleString()} USD bidirectional flow) whose own 1-hop counterparty set contains an active OFAC SDN address. This is a depth-2 sanctions adjacency on a material edge, consistent with FATF Recommendation 16 layered-funds typology and Chainalysis Reactor's default 2-hop exposure surface. Recommend SAR escalation per FinCEN guidance on indirect funnel exposure. The hop-2 walk examined ${twoHopRes.data.transactions_examined} transactions across ${twoHopRes.data.hops_walked} material 1-hop counterparties (skipped ${twoHopRes.data.hops_skipped_below_threshold} below threshold).`,
+            fatf_reference: "FATF Recommendation 16 (Wire Transfers / Travel Rule); FATF Targeted Update June 2025 §indirect exposure",
+            fincen_reference: "FinCEN SAR Form 111 — Suspicious Activity Type 31a (Funnel Account); 31z (Other suspicious activity)",
+            evidence_ids: [twoHopRes.evidence.id, ...sanctionsEvidenceIds],
+            score_contribution: RULE_CONFIG.sanctions_indirect_exposure_2hop.weight,
+            metadata: {
+              indirect_matches: uniqueIndirectHits.map((m) => {
+                const e = isSdnAddress(m.hit);
+                return {
+                  hit_address: m.hit,
+                  via_address: m.via,
+                  via_flow_usd: m.via_flow_usd,
+                  hit_label: e?.label,
+                  hit_source: e?.source,
+                };
+              }),
+              hops_walked: twoHopRes.data.hops_walked,
+              hops_skipped: twoHopRes.data.hops_skipped_below_threshold,
+              transactions_examined: twoHopRes.data.transactions_examined,
+            },
+          });
+        }
+      }
+    }
   }
 
   const overallScore = Math.min(

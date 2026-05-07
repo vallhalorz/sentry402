@@ -365,6 +365,253 @@ export async function getDeepCounterpartySet(
 }
 
 /**
+ * ERC-20 transfer counterparty sweep for sanctions screening.
+ *
+ * SB0416 (DPRK) designations and most active OFAC stablecoin entries are
+ * USDT addresses. USDT transfers between two wallets are NOT visible as
+ * top-level tx counterparties — the top-level tx is `subject → USDT
+ * contract`, and the actual sender/receiver pair lives inside the Transfer
+ * event log. getDeepCounterpartySet only sees top-level tx, so it cannot
+ * catch a wallet that funded an SDN address via USDT.
+ *
+ * This function uses GoldRush's getErc20TransfersForWalletAddress (which
+ * is per-token) to fetch token-transfer counterparties for a specific
+ * stablecoin contract. Returns the unique set of addresses that appear
+ * as the OTHER side of a Transfer event.
+ *
+ * Call this for USDT on the active chain in parallel with the top-level
+ * sweep — covers the DPRK / SB0416 case.
+ */
+export async function getErc20TransferCounterparties(
+  chain: ChainName,
+  wallet: string,
+  contractAddress: string,
+  maxPages = 3,
+): Promise<Cited<DeepCounterpartySet>> {
+  const chainName = CHAIN_MAP[chain];
+  const subjLower = wallet.toLowerCase();
+  const set = new Set<string>();
+  let pageCount = 0;
+  let txCount = 0;
+  let hasMore = false;
+
+  for await (const resp of client().BalanceService.getErc20TransfersForWalletAddress(
+    chainName,
+    wallet,
+    { contractAddress },
+  )) {
+    if (resp.error) break;
+    const items = resp.data?.items ?? [];
+    for (const it of items) {
+      if (!it) continue;
+      // Each block-tx item carries an array of transfer log events. We mine
+      // counterparty addresses from those, not the top-level tx.
+      const transfers = it.transfers ?? [];
+      for (const tr of transfers) {
+        if (!tr) continue;
+        const f = tr.from_address?.toLowerCase();
+        const t = tr.to_address?.toLowerCase();
+        if (f && f !== subjLower) set.add(f);
+        if (t && t !== subjLower) set.add(t);
+        txCount += 1;
+      }
+    }
+    pageCount += 1;
+    if (pageCount >= maxPages) {
+      hasMore = Boolean(resp.data?.pagination?.has_more);
+      break;
+    }
+  }
+
+  const evidence = buildEvidence({
+    endpoint: "BalanceService.getErc20TransfersForWalletAddress (paginated for sanctions sweep)",
+    endpoint_url: `https://api.covalenthq.com/v1/${chainName}/address/${wallet}/transfers_v2/?contract-address=${contractAddress}&pages=${pageCount}`,
+    request_params: { chain: chainName, wallet, contract: contractAddress, max_pages: maxPages },
+    response_excerpt: {
+      pages_scanned: pageCount,
+      transfers_examined: txCount,
+      unique_counterparties: set.size,
+      has_more: hasMore,
+      contract: contractAddress,
+    },
+    tx_hashes: [],
+    block_heights: [],
+    chain,
+  });
+
+  return {
+    data: {
+      addresses: [...set],
+      pages_scanned: pageCount,
+      transactions_examined: txCount,
+      has_more: hasMore,
+    },
+    evidence,
+  };
+}
+
+export type TwoHopMatch = {
+  /** The 1-hop address (subject's direct counterparty) */
+  via: string;
+  /** The 2-hop address that matched (counterparty of `via`) */
+  hit: string;
+  /** USD value of subject ↔ via flow that justified following this branch */
+  via_flow_usd: number;
+};
+
+export type TwoHopCounterpartySet = {
+  /** Unique 2-hop addresses observed across all material 1-hop branches */
+  addresses: string[];
+  /** Trace of (via, hit) pairs, useful for citation in signal metadata */
+  matches: TwoHopMatch[];
+  /** How many 1-hop addresses we actually walked (capped) */
+  hops_walked: number;
+  /** How many 1-hop candidates were skipped because flow < threshold */
+  hops_skipped_below_threshold: number;
+  /** Total tx examined across all 2-hop walks */
+  transactions_examined: number;
+};
+
+export type OneHopMaterialAddress = {
+  address: string;
+  total_flow_usd: number;
+};
+
+/**
+ * 2-hop counterparty sweep, materially gated.
+ *
+ * Walks the 2nd-degree counterparty graph, but ONLY for 1-hop counterparties
+ * with materially-high flow ($1k+ default). Pure combinatorial expansion is
+ * forbidden: an active wallet's 1-hop set can be 100+ addresses, and at 100
+ * tx-per-walk that is 10,000 GoldRush calls per scan — unaffordable on
+ * Foundational quota and uselessly slow for an x402-priced endpoint.
+ *
+ * Defensible scope is the FATF Recommendation 16 + INFO Layered-Funds
+ * typology framing: only material-flow counterparties matter for sanctions
+ * adjacency; "I once interacted with someone who once interacted with a
+ * sanctioned wallet" is below evidentiary threshold. By gating at $1k flow,
+ * we mirror Chainalysis Reactor and TRM Tactical's default exposure
+ * thresholds and stay defensible in a SAR exhibit.
+ *
+ * Algorithm:
+ *   1. Caller filters subject's 1-hop counterparties to those with
+ *      total_flow_usd >= material_threshold and passes them in.
+ *   2. We cap at maxHops 1-hop candidates (default 30) to bound credit usage.
+ *   3. For each, we fetch the recent-tx page (single page, ~100 tx).
+ *   4. We collect each unique tx counterparty (excluding subject) as a
+ *      candidate 2-hop address.
+ *   5. Caller (risk engine) intersects with SDN list.
+ *
+ * Cost: O(maxHops) GoldRush calls. At default 30 hops × ~150ms per call =
+ * ~4.5s p95. Acceptable for an x402-priced agent endpoint.
+ */
+export async function getMaterialTwoHopCounterparties(
+  chain: ChainName,
+  subjectWallet: string,
+  oneHopAddresses: OneHopMaterialAddress[],
+  options: {
+    materialThresholdUsd?: number;
+    maxHopsToWalk?: number;
+  } = {},
+): Promise<Cited<TwoHopCounterpartySet>> {
+  const chainName = CHAIN_MAP[chain];
+  const subjLower = subjectWallet.toLowerCase();
+  const materialThresholdUsd = options.materialThresholdUsd ?? 1000;
+  const maxHopsToWalk = options.maxHopsToWalk ?? 30;
+
+  // Filter to material-flow only and cap at maxHopsToWalk. Sort descending
+  // by flow so the highest-exposure branches are scanned first — if we hit
+  // the cap, we're at least scanning the most material counterparties.
+  const candidates = oneHopAddresses
+    .filter((a) => a.total_flow_usd >= materialThresholdUsd)
+    .filter((a) => a.address.toLowerCase() !== subjLower)
+    .sort((a, b) => b.total_flow_usd - a.total_flow_usd)
+    .slice(0, maxHopsToWalk);
+  const skipped = oneHopAddresses.length - candidates.length;
+
+  const allHits: TwoHopMatch[] = [];
+  const allAddresses = new Set<string>();
+  let totalTxExamined = 0;
+  let hopsWalked = 0;
+
+  for (const cand of candidates) {
+    try {
+      const resp =
+        await client().TransactionService.getAllTransactionsForAddressByPage(
+          chainName,
+          cand.address,
+        );
+      if (resp.error) continue;
+      const items = resp.data?.items ?? [];
+      const candLower = cand.address.toLowerCase();
+      for (const t of items) {
+        if (!t) continue;
+        const from = t.from_address?.toLowerCase();
+        const to = t.to_address?.toLowerCase();
+        if (from && from !== candLower && from !== subjLower) {
+          allAddresses.add(from);
+          allHits.push({ via: cand.address, hit: from, via_flow_usd: cand.total_flow_usd });
+        }
+        if (to && to !== candLower && to !== subjLower) {
+          allAddresses.add(to);
+          allHits.push({ via: cand.address, hit: to, via_flow_usd: cand.total_flow_usd });
+        }
+        totalTxExamined += 1;
+      }
+      hopsWalked += 1;
+    } catch (_err) {
+      // swallow — single counterparty page failure shouldn't kill the sweep
+      continue;
+    }
+  }
+
+  const evidence = buildEvidence({
+    endpoint: "TransactionService.getAllTransactionsForAddressByPage (per 1-hop counterparty, 2-hop sweep)",
+    endpoint_url: `https://api.covalenthq.com/v1/${chainName}/2-hop-walk/?subject=${subjectWallet}`,
+    request_params: {
+      chain: chainName,
+      subject: subjectWallet,
+      one_hop_candidates: oneHopAddresses.length,
+      material_threshold_usd: materialThresholdUsd,
+      max_hops_to_walk: maxHopsToWalk,
+    },
+    response_excerpt: {
+      hops_walked: hopsWalked,
+      hops_skipped_below_threshold: skipped,
+      unique_two_hop_addresses: allAddresses.size,
+      transactions_examined: totalTxExamined,
+    },
+    tx_hashes: [],
+    block_heights: [],
+    chain,
+  });
+
+  return {
+    data: {
+      addresses: [...allAddresses],
+      // Dedupe matches on (via, hit) to keep metadata payload bounded
+      matches: dedupeMatches(allHits),
+      hops_walked: hopsWalked,
+      hops_skipped_below_threshold: skipped,
+      transactions_examined: totalTxExamined,
+    },
+    evidence,
+  };
+}
+
+function dedupeMatches(matches: TwoHopMatch[]): TwoHopMatch[] {
+  const seen = new Set<string>();
+  const out: TwoHopMatch[] = [];
+  for (const m of matches) {
+    const key = `${m.via.toLowerCase()}|${m.hit.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(m);
+  }
+  return out;
+}
+
+/**
  * Recent transactions — first page only. The SDK's `getAllTransactionsForAddress`
  * is an AsyncIterable of *pages*, not txs; we use `*ByPage` for a clean
  * first-page pull.

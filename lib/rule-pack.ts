@@ -7,7 +7,30 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.2.1-mvp";
+export const RULE_PACK_VERSION = "0.3.0-mvp";
+// 0.3.0: 2-hop materially-gated indirect sanctions exposure rule added.
+//        New rule sanctions_indirect_exposure_2hop walks the second-degree
+//        counterparty graph but ONLY for 1-hop counterparties with material
+//        flow (>= $1k USD bidirectional). Caps at 30 1-hop walks per scan
+//        for cost-bounded latency (~5s p95 added when materially-active).
+//        Skipped on Solana since 1-hop USD aggregates are unavailable.
+//        Defensible scope: FATF Recommendation 16 layered-funds typology;
+//        below the $1k threshold, indirect exposure is pure graph noise.
+//        SDN seed expanded to ~37 entries with Tornado Cash 2022-08-08
+//        original designation (delisted 2025-03-21, retained as historic
+//        concern), Ronin Bridge Lazarus 2022-04-14 OFAC designation, and
+//        structured designation_date + treasury_ref fields per entry.
+//        sdn_list_version bumped to 2026-05-07-tc-expanded.
+// 0.2.2: ERC-20 transfer sweep added to sanctions counterparty set. SB0416
+//        DPRK addresses are USDT contracts — they appear inside Transfer
+//        event logs, NOT as top-level tx counterparties. The deep
+//        top-level sweep alone missed wallets that funded SDN addresses
+//        via USDT. This release sweeps USDT and USDC transfer histories
+//        per chain (3 pages each) and merges those counterparties into
+//        the sanctions check set. Now catches the asymmetric "I funded a
+//        DPRK USDT address but my recent native ETH tx don't show it"
+//        case the user surfaced. Sanctions adjacency rationale notes both
+//        top-level and ERC-20 sweep depths.
 // 0.2.1: deep counterparty sweep. Sanctions adjacency, Tornado Cash
 //        historic exposure, stablecoin issuer-frozen-list match, and DPRK
 //        stablecoin cluster proximity now scan up to 5 pages (~500 tx) of
@@ -82,6 +105,18 @@ export const RULE_CONFIG = {
     weight: 30,
     severity: "high",
     threshold: 1,
+  },
+  /**
+   * 2-hop materially-gated indirect exposure (rule pack 0.3.0).
+   * Only fires when at least one 1-hop counterparty had >= threshold USD
+   * bidirectional flow with the subject AND that counterparty's own 1-hop
+   * set contained an active OFAC SDN address. The threshold here is the
+   * 1-hop material-flow gate (USD), NOT the count of indirect hits.
+   */
+  sanctions_indirect_exposure_2hop: {
+    weight: 35,
+    severity: "high",
+    threshold: 1000, // USD bidirectional flow on the 1-hop edge to qualify for 2-hop walk
   },
   tornado_cash_historic_exposure: {
     weight: 8,
