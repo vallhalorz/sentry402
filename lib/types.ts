@@ -132,6 +132,9 @@ export type RiskDossier = {
     queried_at: string; // ISO 8601 UTC
     /** Attribution label if subject matches lib/known-addresses.ts. */
     label?: string;
+    /** ISO 8601 timestamp of the wallet's earliest observed on-chain
+     * activity, sourced from getEarliestTransactionsForAddress. */
+    first_seen_at?: string;
     /** Top holdings by USD value, capped at 10. */
     holdings?: WalletHolding[];
     /** Recent activity, capped at 5. */

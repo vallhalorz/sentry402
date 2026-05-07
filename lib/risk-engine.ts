@@ -646,6 +646,7 @@ export async function buildDossier(
       chain,
       queried_at: queriedAt,
       label: subjectLabel?.label,
+      first_seen_at: earliestRes?.data.earliestBlockSignedAt ?? undefined,
       holdings: topHoldings,
       recent_activity: recentActivity,
     },
