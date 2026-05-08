@@ -2140,16 +2140,13 @@ async function safeTransfer(to, usd) {
       {/* Why not the CDP Facilitator */}
       <section className="rounded-xl border border-paper-200 border-l-4 border-l-brand bg-paper-100 p-5 shadow-card">
         <h3 className="text-sm uppercase tracking-wider text-ink-500 font-medium mb-2">
-          Why not just the CDP Facilitator?
+          What about Coinbase&apos;s free check?
         </h3>
         <p className="text-sm text-ink-700 leading-relaxed">
-          Coinbase&apos;s CDP Facilitator blocks active OFAC SDN at the rails layer, for free.
-          Sentry402 Firewall sits one layer up: multi-jurisdiction list coverage (FATF +
-          OpenSanctions roadmap + issuer freeze events), 2-hop materially-gated
-          counterparty exposure, and a citation-bound reasoning artifact a compliance
-          officer can attach to a SAR exhibit. We catch the wallet that <em>funded</em>{" "}
-          the SDN address — not just the SDN address itself. We do not replace the
-          facilitator; we sit beside it.
+          Coinbase blocks the obvious sanctioned wallets at checkout, for free. Sentry402
+          catches the harder cases — wallets that <em>funded</em> a sanctioned address,
+          wallets on EU/UK lists Coinbase doesn&apos;t track, wallets just drained by phishing.
+          We don&apos;t replace it; we sit beside it.
         </p>
       </section>
     </div>

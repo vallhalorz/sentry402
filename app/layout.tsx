@@ -92,153 +92,56 @@ export default function RootLayout({
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
-        <footer className="mx-auto max-w-6xl px-6 py-10 text-xs text-ink-500 border-t border-paper-200 mt-16 leading-relaxed space-y-6">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <h3 className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">
-                FATF
-              </h3>
-              <ul className="space-y-1">
-                <li>
-                  <a
-                    href="https://www.fatf-gafi.org/en/publications/Fatfrecommendations/Fatf-recommendations.html"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    FATF Recommendations
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.fatf-gafi.org/en/publications/Fatfrecommendations/Targeted-update-virtual-assets-vasps-2025.html"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    Targeted Update June 2025 (VAs / VASPs)
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">
-                FinCEN
-              </h3>
-              <ul className="space-y-1">
-                <li>
-                  <a
-                    href="https://www.fincen.gov/sites/default/files/shared/FinCEN_SAR_ElectronicFilingInstructions-Stand_Alone_doc.pdf"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    SAR Form 111 filing instructions
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.fincen.gov/resources/statutes-regulations/guidance"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    FinCEN guidance index
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">
-                EU MiCA
-              </h3>
-              <ul className="space-y-1">
-                <li>
-                  <a
-                    href="https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32023R1114"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    Regulation (EU) 2023/1114 (MiCA)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.esma.europa.eu/policy-activities/digital-finance-and-innovation/markets-crypto-assets-mica"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    ESMA MiCA portal &amp; EMT register
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">
-                US Treasury / OFAC
-              </h3>
-              <ul className="space-y-1">
-                <li>
-                  <a
-                    href="https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    OFAC SDN list (human-readable)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://home.treasury.gov/news/press-releases/sb0416"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    Press release SB0416 (DPRK 2026-03-12)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://goldrush.dev/docs"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    GoldRush API documentation (EVM)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://docs.helius.dev/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    Helius DAS API documentation (Solana)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-ink-900 transition"
-                  >
-                    @sentry402/eliza-plugin (ElizaOS agents)
-                  </a>
-                </li>
-              </ul>
-            </div>
+        <footer className="mx-auto max-w-6xl px-6 py-8 text-xs text-ink-500 border-t border-paper-200 mt-16 leading-relaxed">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+            <a
+              href="https://github.com/vallhalorz/sentry402"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              GitHub
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              ElizaOS plugin
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="https://goldrush.dev/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              GoldRush docs
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="https://docs.helius.dev/"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              Helius docs
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="https://x402.org"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              x402
+            </a>
           </div>
-          <p className="text-[11px] text-ink-400 max-w-3xl pt-4 border-t border-paper-200">
-            Sentry402 is a research preview. Outputs are deterministic and citation-bound. Every
-            score links to a specific GoldRush (EVM) or Helius DAS (Solana) API call, transaction
-            hash, and dataset version. Designed to satisfy FCA 2024 documentation requirements for
-            compliance decisions. This tool does not provide legal advice; consult your firm&apos;s
-            compliance lead and counsel before acting on any indicator.
+          <p className="text-[11px] text-ink-400 max-w-2xl">
+            Sentry402 is a research preview. Risk scores are deterministic — every flag links to
+            the API call that produced it. Not legal advice.
           </p>
         </footer>
       </body>
