@@ -59,12 +59,18 @@ The deliberate constraint: **no LLM-generated facts in the dossier.** The determ
 | Live drainer detection (planned) | Streaming API (token-transfer + approval log subscription) |
 | Solana watchlist (planned) | Streaming: `New DEX Pairs Stream`, `OHLCV Tokens Stream` |
 
-## Two endpoints, two price tiers
+## Endpoints
 
-Sentry402 exposes the same dossier through two paths:
+Sentry402 exposes four endpoints across two product surfaces — Audit (full RiskDossier for compliance officers) and Firewall (compact verdict for AI agents). Same engine, two output shapes.
 
-- **`GET /api/risk?chain=…&wallet=…`** — free, used by the dashboard at `/`. For compliance officers evaluating the product. No payment, no API key.
-- **`GET /api/risk/paid?chain=…&wallet=…`** — x402-gated at **$0.05 per dossier** on Base Sepolia. For AI agents and production integrations. No signup, no monthly contract — agents pay from a wallet, get a deterministic cited dossier back.
+| Endpoint | Method | Auth | Price | Surface | Use |
+|---|---|---|---|---|---|
+| `/api/risk` | GET | none | free | Audit | Dashboard / Screening tab |
+| `/api/risk/paid` | GET | x402 | $0.05 USDC | Audit | Agents that need the full dossier |
+| `/api/screen` | GET | none | free | Firewall | Free pre-flight preview, dashboard / Firewall tab |
+| `/api/preflight` | POST | x402 | $0.02 USDC | Firewall | Production agent endpoint, inline before every transfer |
+
+The Firewall endpoints were previously published as the standalone product **AgentGuard402**. Merged into Sentry402 on 2026-05-08; same engine, same rule pack, simpler product story.
 
 ```bash
 # Without payment — 402 Payment Required + x402 payment instructions

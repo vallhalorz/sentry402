@@ -57,7 +57,7 @@ type RecentScan = {
   timestamp: number;
 };
 
-type Tab = "screening" | "counterparties";
+type Tab = "screening" | "counterparties" | "firewall";
 
 const RECENTS_KEY = "sentry402:recent";
 const RECENTS_MAX = 5;
@@ -118,7 +118,7 @@ export default function Home() {
       setOrigin(window.location.origin);
       // Read tab from URL hash so the tab is shareable.
       const h = window.location.hash.replace("#", "");
-      if (h === "counterparties" || h === "screening") setTab(h);
+      if (h === "counterparties" || h === "screening" || h === "firewall") setTab(h);
     }
     setRecents(loadRecents());
   }, []);
@@ -401,6 +401,8 @@ export default function Home() {
         </div>
       )}
 
+      {tab === "firewall" && <FirewallView origin={origin} />}
+
       {tab === "screening" && (
       <section className="rounded-xl border border-brand/20 bg-gradient-to-br from-paper-100 to-white p-6 space-y-3 shadow-card no-print">
         <div className="flex items-center gap-2">
@@ -450,6 +452,11 @@ function TabNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
       id: "counterparties",
       label: "Counterparty exposure",
       sublabel: "Full counterparty list with one-click CSV export",
+    },
+    {
+      id: "firewall",
+      label: "Firewall",
+      sublabel: "x402 pre-flight verdict for AI agents · $0.02 / call",
     },
   ];
   return (
@@ -1811,6 +1818,418 @@ function ExportIcon() {
     <svg aria-hidden viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
       <path d="M10 1.5a.75.75 0 01.75.75v9.69l2.97-2.97a.75.75 0 011.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 10.03a.75.75 0 011.06-1.06l2.97 2.97V2.25A.75.75 0 0110 1.5z" />
       <path d="M3.75 14a.75.75 0 01.75.75V17a.5.5 0 00.5.5h10a.5.5 0 00.5-.5v-2.25a.75.75 0 011.5 0V17a2 2 0 01-2 2H5a2 2 0 01-2-2v-2.25a.75.75 0 01.75-.75z" />
+    </svg>
+  );
+}
+
+/* ============================================================
+ * Firewall tab — pre-flight x402 verdict for AI agents
+ * Same risk engine as Screening, different surface and price.
+ * ============================================================ */
+type Verdict = "allow" | "warn" | "block";
+type FirewallResp = {
+  verdict: Verdict;
+  score: number;
+  severity: Severity;
+  reasoning: string;
+  signals: Array<{
+    id: string;
+    type: string;
+    severity: Severity;
+    title: string;
+    rationale: string;
+    fatf_reference?: string;
+    fincen_reference?: string;
+    score_contribution: number;
+  }>;
+  metadata: {
+    rule_pack_version: string;
+    sdn_list_version: string;
+    rule_pack_sha256?: string;
+    generation_id?: string;
+    generated_at?: string;
+  };
+  latency_ms: number;
+};
+
+const VERDICT_LABEL: Record<Verdict, string> = {
+  allow: "ALLOW",
+  warn: "WARN",
+  block: "BLOCK",
+};
+const VERDICT_BG: Record<Verdict, string> = {
+  allow: "bg-signal-low",
+  warn: "bg-signal-medium",
+  block: "bg-signal-critical",
+};
+const VERDICT_TEXT: Record<Verdict, string> = {
+  allow: "text-signal-low",
+  warn: "text-signal-medium",
+  block: "text-signal-critical",
+};
+const VERDICT_BORDER: Record<Verdict, string> = {
+  allow: "border-signal-low/40",
+  warn: "border-signal-medium/40",
+  block: "border-signal-critical/50",
+};
+
+function FirewallView({ origin }: { origin: string }) {
+  const [chain, setChain] = useState<ChainName>("eth-mainnet");
+  const [toAddress, setToAddress] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<FirewallResp | null>(null);
+
+  async function check(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch(
+        `/api/screen?chain=${encodeURIComponent(chain)}&to_address=${encodeURIComponent(toAddress.trim())}`,
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || `HTTP ${res.status}`);
+      }
+      const data: FirewallResp = await res.json();
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 no-print">
+      {/* Intro card */}
+      <section className="rounded-xl border border-brand/20 bg-gradient-to-br from-paper-100 to-white p-6 space-y-3 shadow-card">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-brand/10 text-brand">
+            <ShieldIcon />
+          </span>
+          <h2 className="text-sm uppercase tracking-wider text-ink-500 font-medium">
+            Sentry402 Firewall · pre-flight verdict for AI agents
+          </h2>
+        </div>
+        <p className="text-sm text-ink-700 leading-relaxed">
+          The Screening tab is for compliance officers reading a full RiskDossier.
+          The Firewall tab is for AI agents that need a single{" "}
+          <code className="hash text-xs bg-paper-100 px-1.5 py-0.5 rounded">verdict</code>{" "}
+          before signing a transfer. Same 16-rule engine, same citation-bound output,
+          but distilled to <code className="hash text-xs bg-paper-100 px-1.5 py-0.5 rounded">allow / warn / block</code>{" "}
+          and gated at $0.02 per call via x402.
+        </p>
+        <p className="text-xs text-ink-500 leading-relaxed">
+          Previously published as a separate product, AgentGuard402. Merged into
+          Sentry402 on 2026-05-08.
+        </p>
+      </section>
+
+      {/* Playground */}
+      <section className="rounded-xl border border-paper-200 bg-white p-5 shadow-card space-y-4">
+        <form onSubmit={check} className="space-y-4">
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider text-ink-500 font-medium mb-2 block">
+              Destination address (where the agent is about to send funds)
+            </span>
+            <div className="grid sm:grid-cols-[1fr_auto_auto] gap-3">
+              <input
+                type="text"
+                value={toAddress}
+                onChange={(e) => setToAddress(e.target.value)}
+                placeholder="0x… "
+                required
+                aria-label="Destination address"
+                className="hash rounded-lg border border-paper-200 px-4 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition"
+              />
+              <select
+                value={chain}
+                onChange={(e) => setChain(e.target.value as ChainName)}
+                aria-label="Chain"
+                className="rounded-lg border border-paper-200 px-3 py-2.5 bg-white cursor-pointer hover:border-ink-400 transition text-sm"
+              >
+                <option value="eth-mainnet">Ethereum</option>
+                <option value="base-mainnet">Base</option>
+                <option value="matic-mainnet">Polygon</option>
+                <option value="bsc-mainnet">BNB Chain</option>
+                <option value="arbitrum-mainnet">Arbitrum</option>
+                <option value="optimism-mainnet">Optimism</option>
+                <option value="solana-mainnet">Solana (advisory)</option>
+              </select>
+              <button
+                type="submit"
+                disabled={loading || !toAddress}
+                className="rounded-lg bg-ink-900 text-paper-50 px-5 py-2.5 font-medium hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                {loading ? "Checking…" : "Pre-flight"}
+              </button>
+            </div>
+          </label>
+
+          <div className="space-y-2 pt-2 border-t border-paper-200">
+            <p className="text-xs uppercase tracking-wider text-ink-500 font-medium">
+              Quick demos
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <FirewallDemoChip onPick={setToAddress} addr="0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D" tone="block" label="Amnokgang DPRK" expected="block" />
+              <FirewallDemoChip onPick={setToAddress} addr="0xd04E33461FEA8302c5E1e13895b60cEe8AEfda7F" tone="block" label="Sim Hyon Sop" expected="block" />
+              <FirewallDemoChip onPick={setToAddress} addr="0x722122dF12D4e14e13Ac3b6895a86e84145b6967" tone="warn" label="TC Router (historic)" expected="allow" />
+              <FirewallDemoChip onPick={setToAddress} addr="0x28C6c06298d514Db089934071355E5743bf21d60" tone="allow" label="Binance 14" expected="allow" />
+              <FirewallDemoChip onPick={setToAddress} addr="0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" tone="allow" label="vitalik.eth" expected="allow" />
+            </div>
+          </div>
+        </form>
+      </section>
+
+      {error && (
+        <div role="alert" className="rounded-lg border-l-4 border-signal-high bg-signal-high/5 p-4 text-sm text-ink-700">
+          <p className="font-medium text-signal-high">Pre-flight failed</p>
+          <p className="mt-1 hash text-xs">{error}</p>
+        </div>
+      )}
+
+      {result && <FirewallVerdictView r={result} />}
+
+      {/* API spec block */}
+      <section className="rounded-xl border border-paper-200 bg-white p-6 space-y-4 shadow-card">
+        <div>
+          <h3 className="text-sm uppercase tracking-wider text-ink-500 font-medium mb-1">
+            Two endpoints. Same engine.
+          </h3>
+          <p className="text-sm text-ink-700 leading-relaxed">
+            Free preview for evaluation. x402-gated production endpoint for agents.
+            Identical response shape — what you build against on the free tier works
+            in production.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-paper-200 text-left text-xs uppercase tracking-wider text-ink-500">
+                <th className="py-2 pr-3 font-medium">Method · Path</th>
+                <th className="py-2 pr-3 font-medium">Auth</th>
+                <th className="py-2 pr-3 font-medium">Price</th>
+                <th className="py-2 font-medium">Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-paper-200">
+                <td className="py-3 pr-3">
+                  <span className="hash text-ink-900">GET /api/screen</span>
+                  <div className="text-[11px] text-ink-500 mt-0.5">?chain=eth-mainnet&amp;to_address=0x…</div>
+                </td>
+                <td className="py-3 pr-3 text-xs text-ink-700">none</td>
+                <td className="py-3 pr-3 hash text-xs text-signal-low">free</td>
+                <td className="py-3 text-xs text-ink-700">Evaluation, landing, dev.</td>
+              </tr>
+              <tr className="border-b border-paper-200">
+                <td className="py-3 pr-3">
+                  <span className="hash text-ink-900">POST /api/preflight</span>
+                  <div className="text-[11px] text-ink-500 mt-0.5">X-PAYMENT: &lt;signed x402 USDC&gt;</div>
+                </td>
+                <td className="py-3 pr-3 hash text-xs text-ink-700">x402</td>
+                <td className="py-3 pr-3 hash text-xs text-signal-critical">$0.02 USDC</td>
+                <td className="py-3 text-xs text-ink-700">Production agent endpoint. Base Sepolia.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre className="hash text-xs bg-ink-900 text-paper-50 border border-ink-700 rounded-lg p-4 overflow-x-auto leading-relaxed">
+{`// agent.ts — TypeScript integration
+async function safeTransfer(to, usd) {
+  const r = await fetch('${origin}/api/preflight', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-PAYMENT': await signX402Payment(),
+    },
+    body: JSON.stringify({
+      chain: 'eth-mainnet',
+      to_address: to, amount_usd: usd,
+    }),
+  }).then(r => r.json());
+
+  if (r.verdict === 'block') throw r;
+  if (r.verdict === 'warn') return queueForApproval(r);
+  return agent.transfer(to, usd);
+}`}
+        </pre>
+
+        {/* Verdict spec */}
+        <div className="space-y-2 pt-2">
+          <h4 className="text-xs uppercase tracking-wider text-ink-500 font-medium">
+            Verdict spec · agent action per severity
+          </h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-paper-200 text-left text-xs uppercase tracking-wider text-ink-500">
+                  <th className="py-2 pr-3 font-medium">Severity</th>
+                  <th className="py-2 pr-3 font-medium">Verdict</th>
+                  <th className="py-2 font-medium">Recommended agent action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-paper-200">
+                  <td className="py-2 pr-3 hash text-xs uppercase text-signal-critical font-semibold">critical</td>
+                  <td className="py-2 pr-3 hash text-xs text-signal-critical font-semibold">block</td>
+                  <td className="py-2 text-xs text-ink-700">Abort transfer. Do not retry. Log <code className="hash">generation_id</code>; route to SAR queue.</td>
+                </tr>
+                <tr className="border-b border-paper-200">
+                  <td className="py-2 pr-3 hash text-xs uppercase text-signal-high">high</td>
+                  <td className="py-2 pr-3 hash text-xs text-signal-critical">block</td>
+                  <td className="py-2 text-xs text-ink-700">Abort. Optional: human override only.</td>
+                </tr>
+                <tr className="border-b border-paper-200">
+                  <td className="py-2 pr-3 hash text-xs uppercase text-signal-medium">medium</td>
+                  <td className="py-2 pr-3 hash text-xs text-signal-medium">warn</td>
+                  <td className="py-2 text-xs text-ink-700">Queue for human approval; attach the dossier and signals.</td>
+                </tr>
+                <tr className="border-b border-paper-200">
+                  <td className="py-2 pr-3 hash text-xs uppercase text-ink-500">low</td>
+                  <td className="py-2 pr-3 hash text-xs text-signal-low">allow</td>
+                  <td className="py-2 text-xs text-ink-700">Proceed under normal policy. Persist <code className="hash">generation_id</code>.</td>
+                </tr>
+                <tr>
+                  <td className="py-2 pr-3 hash text-xs uppercase text-ink-500">info</td>
+                  <td className="py-2 pr-3 hash text-xs text-signal-low">allow</td>
+                  <td className="py-2 text-xs text-ink-700">Proceed.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-ink-500 italic max-w-prose">
+            Bias toward <code className="hash">warn</code> is intentional. FATF&apos;s
+            risk-based approach and FinCEN April 2026 NPRM both prefer enhanced review
+            over hard blocks at the medium tier.
+          </p>
+        </div>
+      </section>
+
+      {/* Why not the CDP Facilitator */}
+      <section className="rounded-xl border border-paper-200 border-l-4 border-l-brand bg-paper-100 p-5 shadow-card">
+        <h3 className="text-sm uppercase tracking-wider text-ink-500 font-medium mb-2">
+          Why not just the CDP Facilitator?
+        </h3>
+        <p className="text-sm text-ink-700 leading-relaxed">
+          Coinbase&apos;s CDP Facilitator blocks active OFAC SDN at the rails layer, for free.
+          Sentry402 Firewall sits one layer up: multi-jurisdiction list coverage (FATF +
+          OpenSanctions roadmap + issuer freeze events), 2-hop materially-gated
+          counterparty exposure, and a citation-bound reasoning artifact a compliance
+          officer can attach to a SAR exhibit. We catch the wallet that <em>funded</em>{" "}
+          the SDN address — not just the SDN address itself. We do not replace the
+          facilitator; we sit beside it.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function FirewallDemoChip({
+  onPick, addr, tone, label, expected,
+}: {
+  onPick: (s: string) => void;
+  addr: string;
+  tone: "allow" | "warn" | "block";
+  label: string;
+  expected: Verdict;
+}) {
+  const cls =
+    tone === "block"
+      ? "bg-signal-critical/10 text-signal-critical border-signal-critical/30 hover:bg-signal-critical/15"
+      : tone === "warn"
+        ? "bg-signal-medium/10 text-signal-medium border-signal-medium/30 hover:bg-signal-medium/15"
+        : "bg-signal-low/10 text-signal-low border-signal-low/30 hover:bg-signal-low/15";
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(addr)}
+      title={addr}
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition ${cls}`}
+    >
+      <span aria-hidden className="hash text-[11px] opacity-80">
+        {addr.slice(0, 6)}…{addr.slice(-4)}
+      </span>
+      <span className="text-ink-700">{label}</span>
+      <span className="text-ink-400">→ {expected}</span>
+    </button>
+  );
+}
+
+function FirewallVerdictView({ r }: { r: FirewallResp }) {
+  const v = r.verdict;
+  return (
+    <article className="space-y-4 animate-in fade-in duration-300">
+      <header className={`rounded-xl border-l-4 ${VERDICT_BORDER[v]} bg-white p-6 shadow-card flex items-center gap-5`}>
+        <div className={`inline-flex items-center justify-center h-16 w-16 rounded-full ${VERDICT_BG[v]} text-white shrink-0`}>
+          {v === "block" && (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" />
+            </svg>
+          )}
+          {v === "warn" && (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+            </svg>
+          )}
+          {v === "allow" && (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+            </svg>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={`text-2xl sm:text-3xl font-bold tracking-tight ${VERDICT_TEXT[v]}`}>
+            {VERDICT_LABEL[v]}
+          </p>
+          <p className="text-xs uppercase tracking-wider text-ink-400 font-medium mt-1 hash">
+            severity {r.severity} · score {r.score}/100 · {r.latency_ms}ms · pack {r.metadata.rule_pack_version}
+          </p>
+          <p className="text-sm text-ink-700 mt-2 leading-relaxed">{r.reasoning}</p>
+        </div>
+      </header>
+
+      {r.signals.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wider text-ink-500 font-medium">
+            Cited signals · {r.signals.length}
+          </h3>
+          <ul className="space-y-2">
+            {r.signals.slice(0, 6).map((s) => (
+              <li key={s.id} className="rounded-lg border border-paper-200 bg-white p-3 shadow-card">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="uppercase tracking-wider font-semibold text-ink-700">{s.severity}</span>
+                  <span className="hash text-ink-500">{s.type}</span>
+                  <span className="ml-auto tabular-nums font-semibold text-ink-700 hash">+{s.score_contribution}</span>
+                </div>
+                <p className="text-sm font-medium text-ink-900 mt-1">{s.title}</p>
+                <p className="text-xs text-ink-500 mt-1 leading-relaxed line-clamp-3">{s.rationale}</p>
+                {(s.fatf_reference || s.fincen_reference) && (
+                  <p className="hash text-[10.5px] text-ink-500 mt-2 italic">
+                    {s.fatf_reference} {s.fincen_reference ? `· ${s.fincen_reference}` : ""}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </article>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+      <path
+        fillRule="evenodd"
+        d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z"
+        clipRule="evenodd"
+      />
     </svg>
   );
 }

@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "agent": "node agent/sentry402-agent.mjs",
     "agent:watch": "node agent/sentry402-agent.mjs --watch",
+    "firewall": "node agent/preflight-cli.mjs",
+    "firewall:block": "node agent/preflight-cli.mjs 0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D",
+    "firewall:allow": "node agent/preflight-cli.mjs 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
     "test:coverage": "SENTRY_MODE=1 AGENTGUARD_URL=https://sentry402.vercel.app node scripts/test-coverage.mjs",
     "test:coverage:local": "SENTRY_MODE=1 AGENTGUARD_URL=http://localhost:3000 node scripts/test-coverage.mjs"
   },
