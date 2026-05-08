@@ -1,0 +1,39 @@
+{
+  "name": "@sentry402/eliza-plugin",
+  "version": "0.1.0",
+  "description": "ElizaOS plugin: pre-flight sanctions firewall for AI agents. Wraps native transfer actions with a $0.02 x402 call to Sentry402 — every agent gets allow / warn / block before signing.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test:smoke": "node scripts/smoke.mjs"
+  },
+  "keywords": [
+    "elizaos",
+    "eliza-plugin",
+    "ai-agent",
+    "compliance",
+    "sanctions",
+    "ofac",
+    "x402",
+    "sentry402",
+    "wallet-risk",
+    "agent-firewall"
+  ],
+  "author": "vallhalorz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vallhalorz/sentry402",
+    "directory": "eliza-plugin"
+  },
+  "homepage": "https://sentry402.vercel.app/#firewall",
+  "peerDependencies": {
+    "@elizaos/core": "^0.1.0"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ]
+}

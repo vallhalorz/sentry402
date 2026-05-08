@@ -7,7 +7,18 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.3.2-mvp";
+export const RULE_PACK_VERSION = "0.4.0-mvp";
+// 0.4.0: Solana first-class coverage via Helius DAS + Enhanced Transactions.
+//        Solana subjects no longer return a "limited coverage" advisory —
+//        they get a parallel pipeline that calls Helius for SPL+native
+//        holdings, recent signatures, and decoded native+token transfer
+//        counterparty extraction. Same Cited<T> / Evidence contract as the
+//        EVM side. sanctions_adjacency rule fires on Solana subjects when
+//        their decoded counterparty set intersects an active SDN entry.
+//        SDN seed expanded with two Solana entries (DPRK SB0416 cross-listed
+//        + Lazarus Solana cluster from FATF June 2025 Targeted Update).
+//        helius_das_version pinned in dossier metadata for FCA 2024
+//        reproducibility, parallel to goldrush_api_version on EVM.
 // 0.3.2: stablecoin_dprk_cluster_proximity now matches on SdnEntry.cluster
 //        field instead of brittle label string-matching. Future DPRK
 //        designations only need cluster: "SB0416_DPRK" in sdn.ts to fire

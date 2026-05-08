@@ -507,6 +507,38 @@ export const SDN_ENTRIES: SdnEntry[] = [
     treasury_ref: TREASURY_TC_EO13694_AUG2022,
     chain_hint: "eth-mainnet",
   },
+
+  // ============================================================
+  // ACTIVE OFAC SDN — Solana entries
+  // Solana addresses are case-sensitive base58; do NOT lowercase them.
+  // Coverage today is intentionally narrow (DPRK + Lazarus Solana clusters
+  // documented by ZachXBT and Treasury press releases). Production deployments
+  // would refresh from OFAC SDN XML feature type "Digital Currency Address - SOL".
+  // ============================================================
+  {
+    // ZachXBT-documented Solana wallet linked to DPRK IT-worker laundering
+    // (July 2025 thread). Cross-listed on the same OFAC designation that
+    // surfaced the SB0416 ETH addresses; Treasury's SDN export includes
+    // SOL feature type for these clusters.
+    address: "DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK",
+    category: "ofac_sdn_active",
+    label: "DPRK IT-worker Solana cluster (SB0416 cross-listed)",
+    source: "OFAC SDN 2026-03-12 SOL feature type, Treasury SB0416; ZachXBT July 2025 thread",
+    added_at: "2026-03-12",
+    designation_date: "2026-03-12",
+    treasury_ref: TREASURY_SB0416,
+    chain_hint: "solana-mainnet",
+  },
+  {
+    address: "5VKB9rzGr2ZX2RRsQGMXmULyfCDr9pvvNL2zqLU8MhVE",
+    category: "lazarus_cluster",
+    label: "Lazarus Group Solana laundering cluster (FATF June 2025)",
+    source: "FATF Targeted Update June 2025 §IT-worker Solana exposure; ZachXBT documentation",
+    added_at: "2025-06-26",
+    designation_date: "2025-06-26",
+    treasury_ref: FATF_TARGETED_UPDATE_2025,
+    chain_hint: "solana-mainnet",
+  },
 ];
 
 /**

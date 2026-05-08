@@ -38,6 +38,12 @@ import {
   GOLDRUSH_SDK_VERSION,
 } from "./goldrush";
 import {
+  getSolanaAssets,
+  getSolanaEnhancedCounterparties,
+  getSolanaSignatures,
+  HELIUS_DAS_VERSION,
+} from "./helius";
+import {
   isActiveSanctions,
   isHistoricConcern,
   isSdnAddress,
@@ -655,22 +661,108 @@ export async function buildDossier(
     }
   }
 
-  // Coverage advisory for Solana — be honest in the dossier itself, not just
-  // the README. Compliance reviewers should be able to see at a glance that
-  // this dossier sampled less data than an EVM dossier would.
+  // ============================================================
+  // Solana coverage via Helius DAS + Enhanced Transactions
+  // ============================================================
+  // Subjects on solana-mainnet bypass the EVM GoldRush calls (those endpoints
+  // don't decode SPL data) and instead get a parallel pipeline backed by
+  // Helius. The output dossier shape is identical — same Cited<T> contract,
+  // same Signal types, same Evidence records — so a compliance officer reading
+  // a Solana dossier sees the same surface as an EVM dossier.
+  //
+  // Endpoints called for Solana subjects:
+  //   1. Helius DAS getAssetsByOwner  → SPL holdings + native SOL balance
+  //   2. Helius RPC getSignaturesForAddress → recent ~100 tx signatures
+  //   3. Helius Enhanced Transactions → decoded native+token transfers,
+  //      from/to extraction → counterparty set
+  //
+  // The counterparty set is then run through the same SDN intersection used
+  // on EVM, so sanctions_adjacency / DPRK cluster proximity rules fire on
+  // Solana subjects as they would on Ethereum.
   if (isSolana) {
+    const [solAssetsRes, solSigsRes] = await Promise.all([
+      safe(() => getSolanaAssets(wallet)),
+      safe(() => getSolanaSignatures(wallet, 100)),
+    ]);
+
+    if (solAssetsRes) evidence[solAssetsRes.evidence.id] = solAssetsRes.evidence;
+    if (solSigsRes) evidence[solSigsRes.evidence.id] = solSigsRes.evidence;
+
+    let solCpRes:
+      | Awaited<ReturnType<typeof getSolanaEnhancedCounterparties>>
+      | null = null;
+    if (solSigsRes && solSigsRes.data.length > 0) {
+      solCpRes = await safe(() =>
+        getSolanaEnhancedCounterparties(
+          wallet,
+          solSigsRes.data.map((s) => s.signature),
+        ),
+      );
+      if (solCpRes) evidence[solCpRes.evidence.id] = solCpRes.evidence;
+    }
+
+    // ---- Solana sanctions adjacency check ----
+    // Direct intersection of Solana counterparty set with the SDN list.
+    // Solana SDN entries are case-sensitive base58 — isSdnAddress preserves
+    // case for non-EVM strings.
+    if (solCpRes && solCpRes.data.counterparties.length > 0) {
+      const sanctionsHits: Array<{
+        addr: string;
+        entry: ReturnType<typeof isSdnAddress>;
+      }> = [];
+      for (const cp of solCpRes.data.counterparties) {
+        const hit = isSdnAddress(cp);
+        if (hit && isActiveSanctions(hit)) sanctionsHits.push({ addr: cp, entry: hit });
+      }
+      if (sanctionsHits.length > 0) {
+        signals.push({
+          id: newSignalId(),
+          type: "sanctions_adjacency",
+          severity: RULE_CONFIG.sanctions_adjacency_hop1.severity,
+          title: `Direct counterparty on active sanctions list (${sanctionsHits.length} match${sanctionsHits.length === 1 ? "" : "es"})`,
+          rationale: `The subject Solana wallet has ≥1 direct on-chain counterparty currently on an active sanctions or designated-cluster list. Counterparty set extracted via Helius Enhanced Transactions API across ${solCpRes.data.transfers_seen} decoded native/token transfers. Hop-1 sanctions adjacency on Solana follows the same OFAC 50% rule and FATF Recommendation 6 framing as EVM exposure. Recommend SAR escalation.`,
+          fatf_reference: "FATF Recommendation 6 (Targeted Financial Sanctions)",
+          fincen_reference:
+            "FinCEN SAR Form 111 — Suspicious Activity Type 31y (Transaction with OFAC sanctioned country/entity)",
+          evidence_ids: solCpRes ? [solCpRes.evidence.id] : [],
+          score_contribution: RULE_CONFIG.sanctions_adjacency_hop1.weight,
+          metadata: {
+            chain: "solana-mainnet",
+            matches: sanctionsHits.map((h) => ({
+              address: h.addr,
+              label: h.entry?.label,
+              category: h.entry?.category,
+              source: h.entry?.source,
+            })),
+          },
+        });
+      }
+    }
+
+    // ---- Solana coverage notice (informational, no longer "limited") ----
     signals.push({
       id: newSignalId(),
       type: "coverage_advisory",
       severity: "info",
-      title: "Solana coverage advisory — limited Foundational API data",
-      rationale: `GoldRush Foundational API exposes one Solana endpoint at this time (token balances). Full SPL approval inventory, decoded transaction history, and counterparty graph tracing on Solana require a Helius DAS API supplement, which is on the Sentry402 roadmap. Treat this dossier as a balance snapshot + active-OFAC direct-match check, not a full risk assessment. EVM chains (Ethereum, Base, Polygon, BNB, Arbitrum, Optimism) have full coverage.`,
-      evidence_ids: balancesRes ? [balancesRes.evidence.id] : [],
-      score_contribution: 0, // advisory only — does not move the score
+      title: "Solana coverage via Helius DAS + Enhanced Transactions",
+      rationale: `Solana subjects are sampled via Helius DAS API (getAssetsByOwner for SPL + native holdings) and Helius Enhanced Transactions (decoded counterparty extraction across ~${solSigsRes?.data.length ?? 0} recent signatures). Active OFAC SDN intersection runs on the parsed counterparty set; sanctions_adjacency rule fires on Solana as it would on EVM. SPL approval inventory and 2-hop material exposure on Solana are on the roadmap (Helius does not yet expose a clean SPL allowance feed).`,
+      evidence_ids: [
+        ...(solAssetsRes ? [solAssetsRes.evidence.id] : []),
+        ...(solSigsRes ? [solSigsRes.evidence.id] : []),
+        ...(solCpRes ? [solCpRes.evidence.id] : []),
+      ],
+      score_contribution: 0,
       metadata: {
-        coverage: "limited",
-        endpoints_called: balancesRes ? ["BalanceService.getTokenBalancesForWalletAddress"] : [],
-        roadmap: "Helius DAS API supplement for SPL approvals, decoded txs, full counterparty trace",
+        coverage: "first_class",
+        helius_das_version: HELIUS_DAS_VERSION,
+        endpoints_called: [
+          "Helius DAS getAssetsByOwner",
+          "Solana RPC getSignaturesForAddress (Helius)",
+          "Helius Enhanced Transactions",
+        ],
+        signatures_examined: solSigsRes?.data.length ?? 0,
+        counterparties_extracted: solCpRes?.data.counterparties.length ?? 0,
+        transfers_decoded: solCpRes?.data.transfers_seen ?? 0,
       },
     });
   }
