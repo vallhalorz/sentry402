@@ -7,7 +7,11 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.3.0-mvp";
+export const RULE_PACK_VERSION = "0.3.1-mvp";
+// 0.3.1: removed dead sanctions_adjacency_hop2 config key. It was defined in
+//        RULE_CONFIG but never read by the risk engine (the actual 2-hop rule
+//        uses sanctions_indirect_exposure_2hop). The dead key inflated the
+//        rule_pack_sha256 hash and misrepresented active rules to auditors.
 // 0.3.0: 2-hop materially-gated indirect sanctions exposure rule added.
 //        New rule sanctions_indirect_exposure_2hop walks the second-degree
 //        counterparty graph but ONLY for 1-hop counterparties with material
@@ -99,11 +103,6 @@ export const RULE_CONFIG = {
   sanctions_adjacency_hop1: {
     weight: 60,
     severity: "critical",
-    threshold: 1,
-  },
-  sanctions_adjacency_hop2: {
-    weight: 30,
-    severity: "high",
     threshold: 1,
   },
   /**
