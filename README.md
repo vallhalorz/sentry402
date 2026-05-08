@@ -154,6 +154,19 @@ Then open <http://localhost:3000>.
 
 In active development for the May 2026 GoldRush hackathon. Submission deadline 2026-05-12.
 
+## Future plans
+
+### Social-signal threat intelligence (X / Twitter investigator feed)
+
+On-chain investigators — ZachXBT, Tanuki42, and the SEAL emergency response group — routinely flag addresses publicly on X before any formal OFAC designation or exchange delist. Sentry402 will ingest a curated feed of these posts and cross-reference flagged addresses against every dossier in real time.
+
+**How it will work:**
+
+TBC
+
+**Scope and caveats:** Investigator flags are *not* legal designations. The signal will be labelled explicitly as "community-sourced intelligence, unverified by a regulatory authority" and will never independently push a verdict to `block`. It raises the score and surfaces the citation so a human compliance reviewer can make the call — consistent with Sentry402's principle that the tool augments, not replaces, human judgment.
+
+
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT 
