@@ -592,13 +592,7 @@ export async function buildDossier(
     const sb0416StablecoinHits = [];
     for (const cp of counterparties) {
       const sdnHit = isSdnAddress(cp);
-      if (
-        sdnHit &&
-        (sdnHit.label.includes("Amnokgang") ||
-          sdnHit.label.includes("Yun Song Guk") ||
-          sdnHit.label.includes("Sim Hyon Sop")) &&
-        sdnHit.source.includes("SB0416")
-      ) {
+      if (sdnHit?.cluster === "SB0416_DPRK") {
         sb0416StablecoinHits.push({ addr: cp, entry: sdnHit });
       }
     }

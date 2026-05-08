@@ -43,6 +43,8 @@ export type SdnCategory =
   | "drainer_known"
   | "mixer_known";
 
+export type SdnCluster = "SB0416_DPRK";
+
 export type SdnEntry = {
   /** Lowercased EVM address (or case-sensitive Solana base58). */
   address: string;
@@ -64,6 +66,8 @@ export type SdnEntry = {
    * at the same address on multiple chains. */
   chain_hint?: "eth-mainnet" | "base-mainnet" | "matic-mainnet" | "bsc-mainnet" |
     "arbitrum-mainnet" | "optimism-mainnet" | "solana-mainnet" | "any-evm";
+  /** Cluster tag for rule matching — avoids brittle label string-matching. */
+  cluster?: SdnCluster;
 };
 
 const TREASURY_SB0416 =
@@ -89,6 +93,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0x0330070fd38ec3bb94f58fa55d40368271e9e54a",
@@ -99,6 +104,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0x9be599d7867f5e1a2d7ec6db9710df2b98a15573",
@@ -109,6 +115,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   // Yun Song Guk — DPRK IT-worker lead operating from Boten, Laos
   {
@@ -120,6 +127,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0x95584c303fcd48af5c6b9873015f2ad0ca84eae3",
@@ -130,6 +138,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   // Sim Hyon Sop — China-based KKBC representative
   {
@@ -141,6 +150,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0x76ea76ca4eb727f18956ab93445a94c5280412b9",
@@ -151,6 +161,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0xfb3eff152ea55d1bfa04dbdd509a80fd7b72cdeb",
@@ -161,6 +172,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0xfda1ec4a6178d4916b001a065422d31ebe5f62ff",
@@ -171,6 +183,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
   {
     address: "0x747afb5c7a7fc34b547cd0fdebf9b91759c5a52b",
@@ -181,6 +194,7 @@ export const SDN_ENTRIES: SdnEntry[] = [
     designation_date: "2026-03-12",
     treasury_ref: TREASURY_SB0416,
     chain_hint: "any-evm",
+    cluster: "SB0416_DPRK",
   },
 
   // ============================================================

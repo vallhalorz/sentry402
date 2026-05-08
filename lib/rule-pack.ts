@@ -7,7 +7,11 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.3.1-mvp";
+export const RULE_PACK_VERSION = "0.3.2-mvp";
+// 0.3.2: stablecoin_dprk_cluster_proximity now matches on SdnEntry.cluster
+//        field instead of brittle label string-matching. Future DPRK
+//        designations only need cluster: "SB0416_DPRK" in sdn.ts to fire
+//        the specific rule, rather than adding names to a hardcoded list.
 // 0.3.1: removed dead sanctions_adjacency_hop2 config key. It was defined in
 //        RULE_CONFIG but never read by the risk engine (the actual 2-hop rule
 //        uses sanctions_indirect_exposure_2hop). The dead key inflated the
