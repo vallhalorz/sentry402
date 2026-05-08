@@ -16,9 +16,26 @@ This plugin gives every ElizaOS agent the same compliance reflex a regulated VAS
 
 ## Install
 
+ElizaOS uses [Bun](https://bun.sh) by default. Both work:
+
 ```bash
+bun add @sentry402/eliza-plugin     # ElizaOS default
+# or
 npm install @sentry402/eliza-plugin
 ```
+
+If you don't have an agent yet, scaffold one in three commands per the
+[official ElizaOS quickstart](https://docs.elizaos.ai/quickstart):
+
+```bash
+bun i -g @elizaos/cli
+elizaos create my-agent
+cd my-agent && bun add @sentry402/eliza-plugin
+```
+
+Then add the plugin to your character file as below. Plugin Registry
+submission to <https://docs.elizaos.ai/plugin-registry/overview> is
+on the roadmap.
 
 ## Use — character file
 
@@ -108,4 +125,6 @@ MIT — see [LICENSE](./LICENSE).
 
 - Live demo + API docs: <https://sentry402.vercel.app/#firewall>
 - Engine source: <https://github.com/vallhalorz/sentry402>
+- ElizaOS docs: <https://docs.elizaos.ai/>
+- ElizaOS Plugin Registry: <https://docs.elizaos.ai/plugin-registry/overview>
 - Built for the Covalent GoldRush hackathon (Compliance & Risk track) and Colosseum (May 2026).

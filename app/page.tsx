@@ -2284,9 +2284,9 @@ function StackSection() {
     },
     {
       name: "ElizaOS",
-      role: "Agent SDK",
-      detail: "@sentry402/eliza-plugin · npm",
-      href: "https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin",
+      role: "Agent runtime",
+      detail: "@sentry402/eliza-plugin (npm)",
+      href: "https://elizaos.ai",
       icon: <ElizaIcon />,
     },
   ];

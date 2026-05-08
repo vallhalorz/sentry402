@@ -8,17 +8,25 @@
     "build": "tsc",
     "test:smoke": "node scripts/smoke.mjs"
   },
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0"
+  },
   "keywords": [
     "elizaos",
+    "elizaos-plugin",
     "eliza-plugin",
     "ai-agent",
+    "agent-firewall",
+    "agent-compliance",
     "compliance",
     "sanctions",
     "ofac",
     "x402",
     "sentry402",
     "wallet-risk",
-    "agent-firewall"
+    "solana",
+    "evm"
   ],
   "author": "vallhalorz",
   "license": "MIT",
