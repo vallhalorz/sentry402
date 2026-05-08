@@ -1936,7 +1936,7 @@ function FirewallView({ origin }: { origin: string }) {
         </p>
         <div className="flex flex-wrap gap-2 pt-1 text-xs">
           <a
-            href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
+            href="https://www.npmjs.com/package/@sentry402/eliza-plugin"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-brand/30 bg-brand/5 text-brand hover:bg-brand/10 transition-colors"

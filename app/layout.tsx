@@ -104,7 +104,7 @@ export default function RootLayout({
             </a>
             <span className="text-ink-300">·</span>
             <a
-              href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
+              href="https://www.npmjs.com/package/@sentry402/eliza-plugin"
               target="_blank"
               rel="noreferrer"
               className="hover:text-ink-900 transition"
