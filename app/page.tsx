@@ -213,6 +213,7 @@ export default function Home() {
         </>
       )}
 
+      {tab !== "firewall" && (
       <form
         onSubmit={runScan}
         className="rounded-xl border border-paper-200 bg-white p-5 shadow-card space-y-4 no-print"
@@ -376,8 +377,9 @@ export default function Home() {
           </div>
         )}
       </form>
+      )}
 
-      {error && (
+      {tab !== "firewall" && error && (
         <div
           role="alert"
           className="rounded-lg border-l-4 border-signal-high bg-signal-high/5 p-4 text-sm text-ink-700"
@@ -387,7 +389,7 @@ export default function Home() {
         </div>
       )}
 
-      {loading && <DossierSkeleton />}
+      {tab !== "firewall" && loading && <DossierSkeleton />}
       {dossier && tab === "screening" && <DossierView d={dossier} />}
       {dossier && tab === "counterparties" && <CounterpartyExposureView d={dossier} />}
       {!dossier && !loading && tab === "counterparties" && (
