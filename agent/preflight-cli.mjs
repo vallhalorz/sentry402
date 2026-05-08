@@ -1,25 +1,25 @@
 #!/usr/bin/env node
 /**
- * AgentGuard402 demo CLI.
+ * Sentry402 Firewall pre-flight demo CLI.
  *
  * Simulates an AI agent's outbound transfer flow with a pre-flight check.
  * The agent intends to send funds to a destination wallet; before doing so,
- * it calls AgentGuard402's /api/preflight endpoint. Based on the verdict,
+ * it calls Sentry402's /api/preflight endpoint. Based on the verdict,
  * the agent either proceeds (allow), proceeds with logging (warn), or
  * aborts (block).
  *
  * Usage:
- *   node agent/agentguard-cli.mjs <to_address> [chain]
+ *   node agent/preflight-cli.mjs <to_address> [chain]
  *
  * Examples:
  *   # Sanctioned destination — should BLOCK
- *   node agent/agentguard-cli.mjs 0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D
+ *   node agent/preflight-cli.mjs 0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D
  *
  *   # Clean destination — should ALLOW
- *   node agent/agentguard-cli.mjs 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+ *   node agent/preflight-cli.mjs 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
  *
- *   # Custom AgentGuard endpoint
- *   SENTRY402_URL=http://localhost:3000 node agent/agentguard-cli.mjs 0x...
+ *   # Custom Sentry402 endpoint
+ *   SENTRY402_URL=http://localhost:3000 node agent/preflight-cli.mjs 0x...
  *
  * The CLI hits the production /api/preflight endpoint with an X-PAYMENT
  * stub header (testnet honest — real production agents would attach a

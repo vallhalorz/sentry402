@@ -317,7 +317,7 @@ export default function Home() {
               addr="DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK"
               tone="critical"
               label="OFAC SDN (Solana)"
-              note="DPRK SB0416 cross-listed, 2026-03-12 — full Helius coverage"
+              note="DPRK SB0416 cross-listed, 2026-03-12 · Helius DAS coverage"
             />
             <DemoChip
               onPick={(a) => {
@@ -578,8 +578,8 @@ function CounterpartyExposureView({ d }: { d: RiskDossier }) {
           <p className="text-sm text-ink-700 font-medium">No counterparties detected</p>
           <p className="text-xs text-ink-500 max-w-md mx-auto leading-relaxed mt-2">
             The first-page transaction sample for this wallet returned no counterparty addresses.
-            This is unusual — it can happen with brand-new wallets, contract addresses with no
-            external transfers, or chains where GoldRush coverage is limited.
+            This can happen with brand-new wallets, contract addresses with no external transfers,
+            or sentinel addresses listed for sanctions purposes that have not yet transacted on-chain.
           </p>
         </div>
       ) : (
@@ -1027,7 +1027,7 @@ function ScoreCard({ d }: { d: RiskDossier }) {
         {d.subject.first_seen_at && (
           <p className="text-xs text-ink-500">
             <span className="text-ink-400">First seen on-chain:</span>{" "}
-            {new Date(d.subject.first_seen_at).toLocaleDateString(undefined, {
+            {new Date(d.subject.first_seen_at).toLocaleDateString("en-US", {
               year: "numeric",
               month: "short",
               day: "numeric",
@@ -2002,6 +2002,7 @@ function FirewallView({ origin }: { origin: string }) {
             </p>
             <div className="flex flex-wrap gap-2">
               <FirewallDemoChip onPick={setToAddress} addr="0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D" tone="block" label="Amnokgang DPRK" expected="block" />
+              <FirewallDemoChip onPick={setToAddress} addr="DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK" tone="block" label="DPRK Solana cluster" expected="block" />
               <FirewallDemoChip onPick={setToAddress} addr="0xd04E33461FEA8302c5E1e13895b60cEe8AEfda7F" tone="block" label="Sim Hyon Sop" expected="block" />
               <FirewallDemoChip onPick={setToAddress} addr="0x722122dF12D4e14e13Ac3b6895a86e84145b6967" tone="warn" label="TC Router (historic)" expected="allow" />
               <FirewallDemoChip onPick={setToAddress} addr="0x28C6c06298d514Db089934071355E5743bf21d60" tone="allow" label="Binance 14" expected="allow" />

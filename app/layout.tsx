@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sentry402 · Audit-grade wallet risk, powered by GoldRush",
+  title: "Sentry402 · Audit-grade wallet risk + agent firewall",
   description:
-    "Pay-per-call wallet risk and counterparty due-diligence. Every score citation-bound to a GoldRush API call. Built for compliance teams who need defensible scoring without a $30K enterprise contract.",
+    "Pay-per-call wallet risk and a pre-flight firewall for AI agents. Multi-chain (EVM + Solana) via GoldRush and Helius DAS. Every flag citation-bound. Built for compliance teams who need defensible scoring without a $30K enterprise contract.",
   metadataBase: new URL("https://sentry402.vercel.app"),
   openGraph: {
-    title: "Sentry402 · Audit-grade wallet risk",
+    title: "Sentry402 · Audit-grade wallet risk + agent firewall",
     description:
-      "Cited risk dossiers for compliance teams. Every score links to the exact GoldRush API call, transaction hash, and dataset version. Pay-per-call via x402.",
+      "Cited risk dossiers + agent pre-flight verdict. EVM (GoldRush) + Solana (Helius DAS). Pay-per-call via x402.",
     url: "https://sentry402.vercel.app",
     siteName: "Sentry402",
     locale: "en_US",
@@ -17,10 +17,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sentry402 · Audit-grade wallet risk",
+    title: "Sentry402 · Audit-grade wallet risk + agent firewall",
     description:
-      "Cited risk dossiers for compliance teams. Pay-per-call via x402, built on @goldrushdev.",
-    creator: "@goldrushdev",
+      "Cited risk dossiers + agent pre-flight verdict. Multi-chain (EVM + Solana). Pay-per-call via x402.",
   },
 };
 

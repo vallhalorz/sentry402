@@ -1,7 +1,7 @@
 /**
  * POST /api/preflight
  *
- * The single critical endpoint of AgentGuard402. An AI agent calls this
+ * The single critical endpoint of the Sentry402 Firewall. An AI agent calls this
  * BEFORE executing a transfer, passing its intent (destination address,
  * chain, amount). The endpoint runs the destination through the Sentry402
  * risk engine and returns a verdict the agent code can branch on:
@@ -55,7 +55,7 @@ type PreflightIntent = {
   to_address: string;
   amount_usd?: number;
   /** Optional: agent's own wallet address — included only in the response
-   * for round-tripping; AgentGuard does not screen the agent itself here. */
+   * for round-tripping; Sentry402 does not screen the agent itself here. */
   from_agent?: string;
 };
 
@@ -91,7 +91,7 @@ function paymentRequired(req: NextRequest): NextResponse {
         maxAmountRequired: PRICE_USDC_ATOMS,
         resource: req.url,
         description:
-          "AgentGuard402 pre-flight sanctions check — verdict on whether your agent should proceed with a pending transfer. Citation-bound, deterministic, regulator-defensible.",
+          "Sentry402 Firewall pre-flight sanctions check — verdict on whether your agent should proceed with a pending transfer. Citation-bound, deterministic, regulator-defensible.",
         mimeType: "application/json",
         payTo: PAY_TO_ADDRESS,
         maxTimeoutSeconds: 30,
@@ -100,7 +100,7 @@ function paymentRequired(req: NextRequest): NextResponse {
       },
     ],
     error:
-      "X-PAYMENT header is required. AgentGuard402 charges $0.02 per pre-flight check. See https://x402.org for the protocol.",
+      "X-PAYMENT header is required. Sentry402 Firewall charges $0.02 per pre-flight check. See https://x402.org for the protocol.",
   };
   return new NextResponse(JSON.stringify(body, null, 2), {
     status: 402,
