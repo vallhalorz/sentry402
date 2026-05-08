@@ -18,7 +18,7 @@
  * Pass it to runtime.registerAction in your plugin's init hook.
  */
 
-import { Sentry402Client, decideAgentAction, type Sentry402ChainName } from "../client";
+import { Sentry402Client, decideAgentAction, type Sentry402ChainName } from "../client.js";
 
 export type SafeTransferActionContext = {
   client: Sentry402Client;

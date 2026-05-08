@@ -5,9 +5,9 @@
  * before a transfer is even drafted.
  */
 
-import type { Sentry402ChainName } from "../client";
-import { decideAgentAction } from "../client";
-import type { ElizaAction, SafeTransferActionContext } from "./safe-transfer-sol";
+import type { Sentry402ChainName } from "../client.js";
+import { decideAgentAction } from "../client.js";
+import type { ElizaAction, SafeTransferActionContext } from "./safe-transfer-sol.js";
 
 function inferChainFromAddress(addr: string): Sentry402ChainName | null {
   if (/^0x[a-fA-F0-9]{40}$/.test(addr)) return "eth-mainnet";

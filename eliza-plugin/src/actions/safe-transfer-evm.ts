@@ -8,8 +8,8 @@ import {
   Sentry402Client,
   decideAgentAction,
   type Sentry402ChainName,
-} from "../client";
-import type { ElizaAction, SafeTransferActionContext } from "./safe-transfer-sol";
+} from "../client.js";
+import type { ElizaAction, SafeTransferActionContext } from "./safe-transfer-sol.js";
 
 type EvmChain = Exclude<Sentry402ChainName, "solana-mainnet">;
 

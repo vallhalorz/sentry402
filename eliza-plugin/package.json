@@ -1,11 +1,20 @@
 {
   "name": "@sentry402/eliza-plugin",
-  "version": "0.1.0",
-  "description": "ElizaOS plugin: pre-flight sanctions firewall for AI agents. Wraps native transfer actions with a $0.02 x402 call to Sentry402 — every agent gets allow / warn / block before signing.",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "version": "0.1.1",
+  "description": "ElizaOS plugin: pre-flight sanctions firewall for AI agents. Wraps native transfer actions with a $0.02 x402 call to Sentry402 — every agent gets allow / warn / block before signing. Multi-chain (EVM + Solana) via GoldRush + Helius DAS.",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test:smoke": "node scripts/smoke.mjs"
   },
   "engines": {
@@ -40,8 +49,13 @@
     "@elizaos/core": "^0.1.0"
   },
   "files": [
+    "dist",
     "src",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -32,14 +32,14 @@
  * wallet provider.
  */
 
-import { Sentry402Client, type Sentry402ClientOptions } from "./client";
+import { Sentry402Client, type Sentry402ClientOptions } from "./client.js";
 import {
   createSafeTransferSolAction,
   type SafeTransferActionContext,
   type ElizaAction,
-} from "./actions/safe-transfer-sol";
-import { createSafeTransferEvmAction } from "./actions/safe-transfer-evm";
-import { createCheckDestinationAction } from "./actions/check-destination";
+} from "./actions/safe-transfer-sol.js";
+import { createSafeTransferEvmAction } from "./actions/safe-transfer-evm.js";
+import { createCheckDestinationAction } from "./actions/check-destination.js";
 
 export type Sentry402PluginOptions = Sentry402ClientOptions & {
   /**
@@ -121,12 +121,12 @@ export function sentry402Plugin(opts: Sentry402PluginOptions = {}): Sentry402Plu
 export default sentry402Plugin;
 
 // Re-export client for advanced users who want direct access
-export { Sentry402Client, decideAgentAction } from "./client";
+export { Sentry402Client, decideAgentAction } from "./client.js";
 export type {
   Sentry402Response,
   Sentry402Signal,
   Sentry402ChainName,
   Verdict,
   Severity,
-} from "./client";
-export type { ElizaAction, SafeTransferActionContext } from "./actions/safe-transfer-sol";
+} from "./client.js";
+export type { ElizaAction, SafeTransferActionContext } from "./actions/safe-transfer-sol.js";
