@@ -59,8 +59,8 @@ export default function RootLayout({
                 </span>
               </div>
             </div>
-            <div className="text-xs text-ink-500 flex items-center gap-1.5">
-              <span>powered by</span>
+            <div className="text-xs text-ink-500 flex items-center gap-1.5 flex-wrap">
+              <span>data:</span>
               <a
                 href="https://goldrush.dev"
                 target="_blank"
@@ -68,6 +68,25 @@ export default function RootLayout({
                 className="font-medium text-accent-dark hover:text-accent transition-colors"
               >
                 GoldRush
+              </a>
+              <span className="text-ink-300">·</span>
+              <a
+                href="https://www.helius.dev"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-accent-dark hover:text-accent transition-colors"
+              >
+                Helius
+              </a>
+              <span className="text-ink-300 hidden sm:inline">·</span>
+              <span className="hidden sm:inline">rail:</span>
+              <a
+                href="https://x402.org"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline font-medium text-accent-dark hover:text-accent transition-colors"
+              >
+                x402
               </a>
             </div>
           </div>
@@ -188,7 +207,27 @@ export default function RootLayout({
                     rel="noreferrer"
                     className="hover:text-ink-900 transition"
                   >
-                    GoldRush API documentation
+                    GoldRush API documentation (EVM)
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://docs.helius.dev/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-ink-900 transition"
+                  >
+                    Helius DAS API documentation (Solana)
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-ink-900 transition"
+                  >
+                    @sentry402/eliza-plugin (ElizaOS agents)
                   </a>
                 </li>
               </ul>
@@ -196,10 +235,10 @@ export default function RootLayout({
           </div>
           <p className="text-[11px] text-ink-400 max-w-3xl pt-4 border-t border-paper-200">
             Sentry402 is a research preview. Outputs are deterministic and citation-bound. Every
-            score links to a specific GoldRush API call, transaction hash, and dataset version.
-            Designed to satisfy FCA 2024 documentation requirements for compliance decisions. This
-            tool does not provide legal advice; consult your firm&apos;s compliance lead and counsel
-            before acting on any indicator.
+            score links to a specific GoldRush (EVM) or Helius DAS (Solana) API call, transaction
+            hash, and dataset version. Designed to satisfy FCA 2024 documentation requirements for
+            compliance decisions. This tool does not provide legal advice; consult your firm&apos;s
+            compliance lead and counsel before acting on any indicator.
           </p>
         </footer>
       </body>

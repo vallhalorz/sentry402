@@ -191,16 +191,30 @@ export default function Home() {
         <div className="max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full bg-paper-100 border border-paper-200 px-3 py-1 text-xs text-ink-500">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-signal-low" />
-            <span>Live demo. Powered by GoldRush. Pay-per-call via x402.</span>
+            <span>Live demo · Multi-chain · Pay-per-call via x402</span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-tight">
             Wallet risk, defensible to a regulator.
           </h1>
           <p className="text-ink-500 text-lg leading-relaxed max-w-2xl">
-            Paste any wallet. Sentry402 returns a cited risk dossier. Every flag links to the exact
-            GoldRush API call, transaction hash, and dataset version that produced it. Built for
+            Paste any wallet — EVM or Solana. Sentry402 returns a cited risk dossier. Every flag
+            links to the exact{" "}
+            <a href="https://goldrush.dev" target="_blank" rel="noreferrer" className="border-b border-ink-300 hover:text-accent-dark hover:border-accent-dark transition-colors">GoldRush</a>{" "}
+            (EVM) or{" "}
+            <a href="https://www.helius.dev" target="_blank" rel="noreferrer" className="border-b border-ink-300 hover:text-accent-dark hover:border-accent-dark transition-colors">Helius DAS</a>{" "}
+            (Solana) API call, transaction hash, and dataset version that produced it. Built for
             compliance teams who need defensible scoring without a $30K enterprise contract.
           </p>
+          {/* Integrations strip */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-500 pt-2">
+            <span className="uppercase tracking-wider text-[10px] text-ink-400">Stack</span>
+            <span aria-hidden className="text-ink-300">·</span>
+            <span><span className="text-ink-700 font-medium">EVM</span> via <a href="https://goldrush.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">GoldRush</a></span>
+            <span aria-hidden className="text-ink-300">·</span>
+            <span><span className="text-ink-700 font-medium">Solana</span> via <a href="https://www.helius.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">Helius DAS</a></span>
+            <span aria-hidden className="text-ink-300">·</span>
+            <span><span className="text-ink-700 font-medium">Agent rail</span> via <a href="https://x402.org" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">x402</a> + <a href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">ElizaOS plugin</a></span>
+          </div>
         </div>
       </section>
 
@@ -263,7 +277,7 @@ export default function Home() {
               <option value="bsc-mainnet">BNB Chain</option>
               <option value="arbitrum-mainnet">Arbitrum</option>
               <option value="optimism-mainnet">Optimism</option>
-              <option value="solana-mainnet">Solana (advisory)</option>
+              <option value="solana-mainnet">Solana</option>
             </select>
             <button
               type="submit"
@@ -309,9 +323,9 @@ export default function Home() {
                 setChain("solana-mainnet");
               }}
               addr="DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK"
-              tone="info"
-              label="Solana wallet"
-              note="coverage advisory demo"
+              tone="critical"
+              label="OFAC SDN (Solana)"
+              note="DPRK SB0416 cross-listed, 2026-03-12 — full Helius coverage"
             />
             <DemoChip
               onPick={(a) => {
@@ -1659,7 +1673,7 @@ function RulePackContents() {
     { id: "fresh_wallet", severity: "low", weight: 10, purpose: "First on-chain activity less than 7 days ago (true wallet age)." },
     { id: "tornado_cash_historic_exposure", severity: "low", weight: 8, purpose: "Counterparty on the historic Tornado Cash list (delisted 2025-03-21, informational only)." },
     { id: "stablecoin_issuer_compliance", severity: "low", weight: 8, purpose: "Informational profile of stablecoin holdings by issuer freeze policy." },
-    { id: "coverage_advisory", severity: "info", weight: 0, purpose: "Solana coverage advisory: limited Foundational API data." },
+    { id: "coverage_advisory", severity: "info", weight: 0, purpose: "Coverage notice: which data sources were sampled. Helius DAS on Solana, GoldRush on EVM." },
   ];
   const SEV_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
   const sorted = [...RULES].sort(
@@ -1922,9 +1936,28 @@ function FirewallView({ origin }: { origin: string }) {
           <code className="hash text-xs bg-paper-100 px-1.5 py-0.5 rounded">verdict</code>{" "}
           before signing a transfer. Same 16-rule engine, same citation-bound output,
           but distilled to <code className="hash text-xs bg-paper-100 px-1.5 py-0.5 rounded">allow / warn / block</code>{" "}
-          and gated at $0.02 per call via x402.
+          and gated at $0.02 per call via x402. Multi-chain coverage:{" "}
+          <span className="text-ink-900 font-medium">EVM</span> via{" "}
+          <a href="https://goldrush.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">GoldRush</a>{" "}
+          and <span className="text-ink-900 font-medium">Solana</span> via{" "}
+          <a href="https://www.helius.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">Helius DAS</a>.
         </p>
-        <p className="text-xs text-ink-500 leading-relaxed">
+        <div className="flex flex-wrap gap-2 pt-1 text-xs">
+          <a
+            href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-brand/30 bg-brand/5 text-brand hover:bg-brand/10 transition-colors"
+          >
+            <span className="hash text-[11px]">@sentry402/eliza-plugin</span>
+            <span className="text-ink-500">→ ElizaOS agents drop-in</span>
+          </a>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-paper-100 border border-paper-200 text-ink-500">
+            <span className="hash text-[11px]">npm install</span>
+            <span className="hidden sm:inline">— SAFE_TRANSFER_SOL, SAFE_TRANSFER_ETH, …</span>
+          </span>
+        </div>
+        <p className="text-xs text-ink-500 leading-relaxed pt-1">
           Previously published as a separate product, AgentGuard402. Merged into
           Sentry402 on 2026-05-08.
         </p>
@@ -1959,7 +1992,7 @@ function FirewallView({ origin }: { origin: string }) {
                 <option value="bsc-mainnet">BNB Chain</option>
                 <option value="arbitrum-mainnet">Arbitrum</option>
                 <option value="optimism-mainnet">Optimism</option>
-                <option value="solana-mainnet">Solana (advisory)</option>
+                <option value="solana-mainnet">Solana</option>
               </select>
               <button
                 type="submit"
