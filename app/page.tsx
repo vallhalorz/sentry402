@@ -205,18 +205,10 @@ export default function Home() {
             (Solana) API call, transaction hash, and dataset version that produced it. Built for
             compliance teams who need defensible scoring without a $30K enterprise contract.
           </p>
-          {/* Integrations strip */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-500 pt-2">
-            <span className="uppercase tracking-wider text-[10px] text-ink-400">Stack</span>
-            <span aria-hidden className="text-ink-300">·</span>
-            <span><span className="text-ink-700 font-medium">EVM</span> via <a href="https://goldrush.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">GoldRush</a></span>
-            <span aria-hidden className="text-ink-300">·</span>
-            <span><span className="text-ink-700 font-medium">Solana</span> via <a href="https://www.helius.dev" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">Helius DAS</a></span>
-            <span aria-hidden className="text-ink-300">·</span>
-            <span><span className="text-ink-700 font-medium">Agent rail</span> via <a href="https://x402.org" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">x402</a> + <a href="https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin" target="_blank" rel="noreferrer" className="text-accent-dark hover:text-accent border-b border-ink-300">ElizaOS plugin</a></span>
-          </div>
         </div>
       </section>
+
+      <StackSection />
 
       <TabNav tab={tab} onChange={changeTab} />
 
@@ -2254,6 +2246,179 @@ function FirewallVerdictView({ r }: { r: FirewallResp }) {
         </section>
       )}
     </article>
+  );
+}
+
+/* ============================================================
+ * StackSection — 4-card monochrome integrations strip
+ * (GoldRush · Helius · x402 · ElizaOS)
+ *
+ * Logos are stylized monochrome SVG approximations, not exact brand
+ * marks. Hover lifts to accent color so the editorial palette holds.
+ * ============================================================ */
+function StackSection() {
+  const items: Array<{
+    name: string;
+    role: string;
+    detail: string;
+    href: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      name: "GoldRush",
+      role: "EVM data",
+      detail: "6 chains · approvals · tx history",
+      href: "https://goldrush.dev",
+      icon: <GoldRushIcon />,
+    },
+    {
+      name: "Helius",
+      role: "Solana data",
+      detail: "DAS · enhanced tx · counterparty",
+      href: "https://www.helius.dev",
+      icon: <HeliusIcon />,
+    },
+    {
+      name: "x402",
+      role: "Payment rail",
+      detail: "$0.02–$0.05 USDC · Base Sepolia",
+      href: "https://x402.org",
+      icon: <X402Icon />,
+    },
+    {
+      name: "ElizaOS",
+      role: "Agent SDK",
+      detail: "@sentry402/eliza-plugin · npm",
+      href: "https://github.com/vallhalorz/sentry402/tree/main/eliza-plugin",
+      icon: <ElizaIcon />,
+    },
+  ];
+  return (
+    <section className="no-print">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-[10px] uppercase tracking-[0.16em] text-ink-400 font-semibold">
+          Stack
+        </span>
+        <span className="text-ink-300 text-xs">·</span>
+        <span className="text-xs text-ink-500">data, rail, distribution</span>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {items.map((it) => (
+          <a
+            key={it.name}
+            href={it.href}
+            target="_blank"
+            rel="noreferrer"
+            className="group rounded-lg border border-paper-200 bg-white p-4 hover:border-ink-400 hover:shadow-card transition-all"
+          >
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="inline-flex items-center justify-center h-7 w-7 text-ink-700 group-hover:text-accent-dark transition-colors">
+                {it.icon}
+              </span>
+              <span className="text-sm font-semibold tracking-tight text-ink-900">
+                {it.name}
+              </span>
+            </div>
+            <p className="text-xs text-ink-700 font-medium">{it.role}</p>
+            <p className="text-[11px] text-ink-500 mt-0.5 hash leading-relaxed">
+              {it.detail}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ---- Stylized monochrome SVG marks ---- */
+
+function GoldRushIcon() {
+  // Stylized "G" inside a circle — gold-rush coin reference
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M16.2 9.3C15.5 8 13.9 7.2 12.1 7.2C9.3 7.2 7.2 9.3 7.2 12C7.2 14.7 9.3 16.8 12.1 16.8C14 16.8 15.5 15.8 16.3 14.3H12.3V12.5H17.3V14.5C16.3 16.5 14.4 17.8 12.1 17.8C8.6 17.8 6 15.2 6 12C6 8.7 8.6 6 12.1 6C14.4 6 16.4 7.2 17.3 8.9L16.2 9.3Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function HeliusIcon() {
+  // Sun / radial burst — Helius is named for the Greek sun
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+      <g stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+        <line x1="12" y1="2.5" x2="12" y2="5.5" />
+        <line x1="12" y1="18.5" x2="12" y2="21.5" />
+        <line x1="2.5" y1="12" x2="5.5" y2="12" />
+        <line x1="18.5" y1="12" x2="21.5" y2="12" />
+        <line x1="5.2" y1="5.2" x2="7.3" y2="7.3" />
+        <line x1="16.7" y1="16.7" x2="18.8" y2="18.8" />
+        <line x1="5.2" y1="18.8" x2="7.3" y2="16.7" />
+        <line x1="16.7" y1="7.3" x2="18.8" y2="5.2" />
+      </g>
+    </svg>
+  );
+}
+
+function X402Icon() {
+  // Stylized "402" wordmark — HTTP 402 Payment Required protocol
+  return (
+    <svg viewBox="0 0 28 24" fill="none" className="h-5 w-7">
+      <text
+        x="14"
+        y="15"
+        textAnchor="middle"
+        fontFamily='"JetBrains Mono", ui-monospace, monospace'
+        fontSize="11"
+        fontWeight="700"
+        fill="currentColor"
+        letterSpacing="-0.03em"
+      >
+        402
+      </text>
+      <line
+        x1="3"
+        y1="20"
+        x2="25"
+        y2="20"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ElizaIcon() {
+  // Simple chip / agent — geometric frame with two eye-dots
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+      <rect
+        x="5"
+        y="5"
+        width="14"
+        height="14"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <circle cx="9.5" cy="11" r="1.2" fill="currentColor" />
+      <circle cx="14.5" cy="11" r="1.2" fill="currentColor" />
+      <path
+        d="M9.5 15.2c.7.6 1.6 1 2.5 1s1.8-.4 2.5-1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <line x1="2" y1="9" x2="5" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="2" y1="15" x2="5" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="19" y1="9" x2="22" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="19" y1="15" x2="22" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
 
