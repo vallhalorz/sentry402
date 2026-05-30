@@ -170,6 +170,53 @@ export async function buildDossier(
         sdn_added_at: directHit.added_at,
       },
     });
+
+    // ⚡ FAST PATH: subject is itself an active SDN address. Verdict is
+    // already saturated at score=100 / severity=critical / verdict=block.
+    // Adding more signals from GoldRush + Helius enumeration cannot make
+    // the verdict any more severe — `Math.min(100, sum)` and the
+    // severity ladder both top out here. Skipping the rest of the
+    // pipeline cuts demo latency on Amnokgang-style cases from ~15s to
+    // ~500ms with zero loss of audit quality: the only "missing" data
+    // are cosmetic counterparty / holdings panels, which are irrelevant
+    // once the subject itself is sanctioned. The dossier metadata
+    // records the fast-path so an auditor can confirm what we skipped.
+    return {
+      subject: {
+        wallet,
+        chain,
+        queried_at: queriedAt,
+        label: directHit.label,
+        first_seen_at: undefined,
+        holdings: [],
+        recent_activity: [],
+        counterparties: [],
+      },
+      overall_score: 100,
+      severity: "critical",
+      headline: `Active OFAC SDN match — immediate escalation. Score 100/100.`,
+      signals,
+      evidence,
+      metadata: {
+        rule_pack_version: RULE_PACK_VERSION,
+        rule_pack_sha256: RULE_PACK_SHA256,
+        sdn_list_version: SDN_LIST_VERSION,
+        goldrush_api_version: GOLDRUSH_SDK_VERSION,
+        generator: { name: "sentry402", version: "0.2.0" },
+        generation_id: newGenerationId(),
+        generated_at: new Date().toISOString(),
+        stablecoin_registry_version: STABLECOIN_REGISTRY_VERSION,
+        issuer_frozen_list_version: ISSUER_FROZEN_LIST_VERSION,
+        known_addresses_version: KNOWN_ADDRESSES_VERSION,
+        // Audit transparency — record that we short-circuited and why.
+        fast_path: "ofac_direct_match",
+      } as DossierMetadata & {
+        stablecoin_registry_version: string;
+        issuer_frozen_list_version: string;
+        known_addresses_version: string;
+        fast_path: string;
+      },
+    };
   }
 
   // Fetch core data in parallel. Solana coverage on GoldRush Foundational is

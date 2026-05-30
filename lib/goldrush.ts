@@ -534,14 +534,27 @@ export async function getMaterialTwoHopCounterparties(
   let totalTxExamined = 0;
   let hopsWalked = 0;
 
-  for (const cand of candidates) {
-    try {
-      const resp =
-        await client().TransactionService.getAllTransactionsForAddressByPage(
-          chainName,
-          cand.address,
-        );
-      if (resp.error) continue;
+  // Parallelize the per-candidate page fetches in chunks. Previously this
+  // walked candidates serially (~150-300ms per call × 30 candidates =
+  // 5-10s of dead wall-clock). Chunked Promise.all preserves the same
+  // result while collapsing the latency. Chunk size is conservative to
+  // stay under GoldRush per-host concurrency limits.
+  const CHUNK_SIZE = 6;
+  for (let i = 0; i < candidates.length; i += CHUNK_SIZE) {
+    const chunk = candidates.slice(i, i + CHUNK_SIZE);
+    const results = await Promise.all(
+      chunk.map((cand) =>
+        client()
+          .TransactionService.getAllTransactionsForAddressByPage(
+            chainName,
+            cand.address,
+          )
+          .then((resp) => ({ cand, resp }))
+          .catch(() => ({ cand, resp: null as null }))
+      ),
+    );
+    for (const { cand, resp } of results) {
+      if (!resp || resp.error) continue;
       const items = resp.data?.items ?? [];
       const candLower = cand.address.toLowerCase();
       for (const t of items) {
@@ -559,9 +572,6 @@ export async function getMaterialTwoHopCounterparties(
         totalTxExamined += 1;
       }
       hopsWalked += 1;
-    } catch (_err) {
-      // swallow — single counterparty page failure shouldn't kill the sweep
-      continue;
     }
   }
 

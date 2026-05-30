@@ -64,19 +64,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     cacheDossier(dossier);
     const verdict = severityToVerdict(dossier.severity);
     const reasoning = reasoningFor(dossier.severity, dossier.signals.length);
-    return NextResponse.json(
-      {
-        verdict,
-        score: dossier.overall_score,
-        severity: dossier.severity,
-        reasoning,
-        signals: dossier.signals,
-        evidence: dossier.evidence,
-        metadata: dossier.metadata,
-        latency_ms: Date.now() - t0,
+    const body = {
+      verdict,
+      score: dossier.overall_score,
+      severity: dossier.severity,
+      reasoning,
+      signals: dossier.signals,
+      evidence: dossier.evidence,
+      metadata: dossier.metadata,
+      latency_ms: Date.now() - t0,
+    };
+    return new NextResponse(JSON.stringify(body), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        // Vercel edge cache: 5 min fresh, 10 min stale-while-revalidate.
+        // Same wallet within the window returns from the edge in <100ms
+        // without re-running the engine. The rule pack + dataset versions
+        // are pinned in metadata so cached responses remain auditable.
+        // Cache-Control overrides force-dynamic at the CDN layer.
+        "cache-control": "public, s-maxage=300, stale-while-revalidate=600",
       },
-      { status: 200 },
-    );
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
