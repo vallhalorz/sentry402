@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { RULE_PACK_VERSION } from "@/lib/rule-pack-meta";
 
 export const metadata: Metadata = {
   title: "Sentry402 · Audit-grade wallet risk + agent firewall",
   description:
-    "Pay-per-call wallet risk and a pre-flight firewall for AI agents. Multi-chain (EVM + Solana) via GoldRush and Helius DAS. Every flag citation-bound. Built for compliance teams who need defensible scoring without a $30K enterprise contract.",
+    "Pay-per-call wallet risk and a pre-flight firewall for AI agents. Multi-chain (EVM + Solana) via GoldRush and Helius DAS. Every flag citation-bound, every signal traceable to a specific API call and dataset version.",
   metadataBase: new URL("https://sentry402.vercel.app"),
   openGraph: {
     title: "Sentry402 · Audit-grade wallet risk + agent firewall",
@@ -52,10 +53,21 @@ export default function RootLayout({
                 </svg>
               </span>
               <div className="flex items-baseline gap-2">
-                <span className="font-semibold tracking-tight text-base">Sentry402</span>
+                <a href="/" className="font-semibold tracking-tight text-base hover:text-accent-dark transition-colors">
+                  Sentry402
+                </a>
                 <span className="text-xs text-ink-400 hidden sm:inline">
                   audit-grade wallet risk
                 </span>
+                <a
+                  href="/methodology"
+                  title="View methodology and rule pack inventory"
+                  className="hidden md:inline-flex items-center gap-1 ml-2 text-[10px] uppercase tracking-wider text-ink-500 hover:text-ink-900 bg-paper-100 border border-paper-200 rounded-full px-2 py-0.5 transition-colors"
+                >
+                  <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span>engine</span>
+                  <span className="hash text-ink-700">{RULE_PACK_VERSION}</span>
+                </a>
               </div>
             </div>
             <div className="text-xs text-ink-500 flex items-center gap-1.5 flex-wrap">
@@ -93,6 +105,29 @@ export default function RootLayout({
         <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
         <footer className="mx-auto max-w-6xl px-6 py-8 text-xs text-ink-500 border-t border-paper-200 mt-16 leading-relaxed">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+            <a
+              href="/methodology"
+              className="hover:text-ink-900 transition"
+            >
+              Methodology
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="/changelog"
+              className="hover:text-ink-900 transition"
+            >
+              Changelog
+            </a>
+            <span className="text-ink-300">·</span>
+            <a
+              href="/api/sample-dossier"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-ink-900 transition"
+            >
+              Sample dossier JSON
+            </a>
+            <span className="text-ink-300">·</span>
             <a
               href="https://github.com/vallhalorz/sentry402"
               target="_blank"

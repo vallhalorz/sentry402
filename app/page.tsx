@@ -10,6 +10,7 @@ import type {
   WalletHolding,
 } from "@/lib/types";
 import { addressUrl, explorerName, txUrl } from "@/lib/block-explorer";
+import { RULE_PACK_META, RULE_PACK_VERSION } from "@/lib/rule-pack-meta";
 
 const SEVERITY_COLOR: Record<Severity, string> = {
   info: "#6366f1",
@@ -202,13 +203,14 @@ export default function Home() {
             <a href="https://goldrush.dev" target="_blank" rel="noreferrer" className="border-b border-ink-300 hover:text-accent-dark hover:border-accent-dark transition-colors">GoldRush</a>{" "}
             (EVM) or{" "}
             <a href="https://www.helius.dev" target="_blank" rel="noreferrer" className="border-b border-ink-300 hover:text-accent-dark hover:border-accent-dark transition-colors">Helius DAS</a>{" "}
-            (Solana) API call, transaction hash, and dataset version that produced it. Built for
-            compliance teams who need defensible scoring without a $30K enterprise contract.
+            (Solana) API call, transaction hash, and dataset version that produced it.
           </p>
         </div>
       </section>
 
       <StackSection />
+
+      <MethodologyCallout />
 
       <TabNav tab={tab} onChange={changeTab} />
 
@@ -429,8 +431,9 @@ export default function Home() {
           instead. Same response, but x402-gated at $0.05 per dossier on Base Sepolia. No API key,
           no signup, no monthly contract.
         </p>
-        <pre className="hash text-xs bg-ink-900 text-paper-50 border border-ink-700 rounded-lg p-4 overflow-x-auto leading-relaxed">
-{`curl -i '${origin}/api/risk/paid?chain=eth-mainnet&wallet=0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D'
+        <CodeBlock
+          label="curl example"
+          code={`curl -i '${origin}/api/risk/paid?chain=eth-mainnet&wallet=0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D'
 # HTTP/1.1 402 Payment Required  (no payment attached)
 # x402 payment-required JSON in body
 
@@ -438,7 +441,7 @@ curl -i -H 'X-PAYMENT: <signed-payment-payload>' \\
   '${origin}/api/risk/paid?chain=eth-mainnet&wallet=0xcB74874f1e06Fcf80A306e06e5379A44B488bA2D'
 # HTTP/1.1 200 OK
 # cited RiskDossier JSON, x-payment-response settlement header`}
-        </pre>
+        />
         <p className="text-xs text-ink-400">
           GoldRush&apos;s own x402 service is also live on Base Sepolia today. Mainnet is &ldquo;coming
           soon&rdquo; per their docs. We do not pretend testnet USDC is real settlement.
@@ -2066,8 +2069,9 @@ function FirewallView({ origin }: { origin: string }) {
           </table>
         </div>
 
-        <pre className="hash text-xs bg-ink-900 text-paper-50 border border-ink-700 rounded-lg p-4 overflow-x-auto leading-relaxed">
-{`// agent.ts — TypeScript integration
+        <CodeBlock
+          label="agent.ts snippet"
+          code={`// agent.ts — TypeScript integration
 async function safeTransfer(to, usd) {
   const r = await fetch('${origin}/api/preflight', {
     method: 'POST',
@@ -2085,7 +2089,7 @@ async function safeTransfer(to, usd) {
   if (r.verdict === 'warn') return queueForApproval(r);
   return agent.transfer(to, usd);
 }`}
-        </pre>
+        />
 
         {/* Verdict spec */}
         <div className="space-y-2 pt-2">
@@ -2325,6 +2329,145 @@ function StackSection() {
         ))}
       </div>
     </section>
+  );
+}
+
+/* ============================================================
+ * CodeBlock — dark code panel with a click-to-copy button.
+ * Replaces inline <pre> blocks so visitors can grab the curl
+ * or agent.ts snippet without selecting text by hand.
+ * ============================================================ */
+function CodeBlock({
+  code,
+  label,
+}: {
+  code: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard refused — silently noop
+    }
+  }
+  return (
+    <div className="relative group">
+      <pre className="hash text-xs bg-ink-900 text-paper-50 border border-ink-700 rounded-lg p-4 pr-14 overflow-x-auto leading-relaxed">
+        {code}
+      </pre>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={copied ? "Copied" : label ? `Copy ${label}` : "Copy code"}
+        className="absolute top-2.5 right-2.5 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] uppercase tracking-wider font-medium bg-ink-700/80 hover:bg-ink-700 text-paper-100 border border-ink-600 transition-colors"
+      >
+        {copied ? (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" aria-hidden>
+              <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Copied
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" aria-hidden>
+              <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M5 15V6a2 2 0 0 1 2-2h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            Copy
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+ * MethodologyCallout — surfaces the rule pack inventory and a
+ * one-line pitch with deep links into /methodology. Sits between
+ * the Stack section and the TabNav so anyone landing on the page
+ * sees "yes, the scoring is documented" before they get to the
+ * dossier itself.
+ * ============================================================ */
+function MethodologyCallout() {
+  const total = RULE_PACK_META.length;
+  const critical = RULE_PACK_META.filter((r) => r.severity === "critical").length;
+  const high = RULE_PACK_META.filter((r) => r.severity === "high").length;
+  const medium = RULE_PACK_META.filter((r) => r.severity === "medium").length;
+  const low = RULE_PACK_META.filter((r) => r.severity === "low").length;
+  return (
+    <section className="no-print rounded-xl border border-paper-200 bg-paper-50 p-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-[0.16em] text-ink-500 font-semibold">
+              How scoring works
+            </span>
+            <span className="text-ink-300 text-xs">·</span>
+            <span className="hash text-xs text-ink-500">rule pack {RULE_PACK_VERSION}</span>
+          </div>
+          <p className="text-sm text-ink-700 leading-relaxed">
+            <strong className="text-ink-900">{total} deterministic rules</strong>, severity-weighted,
+            citation-bound. No LLM in the scoring path. The same rule pack runs the dossier you see
+            here, the free <code className="hash text-xs bg-white px-1 py-0.5 rounded border border-paper-200">/api/screen</code>{" "}
+            endpoint, and the x402-gated{" "}
+            <code className="hash text-xs bg-white px-1 py-0.5 rounded border border-paper-200">/api/preflight</code>{" "}
+            verdict for AI agents — pinned by SHA-256 in every response so an auditor can recreate
+            the exact rules that ran months later.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1 text-xs">
+            <a
+              href="/methodology"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-brand/30 bg-brand/5 text-brand hover:bg-brand/10 transition-colors"
+            >
+              Read the methodology →
+            </a>
+            <a
+              href="/changelog"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-paper-200 text-ink-700 hover:bg-paper-100 transition-colors"
+            >
+              Changelog
+            </a>
+            <a
+              href="/api/sample-dossier"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-paper-200 text-ink-700 hover:bg-paper-100 transition-colors"
+            >
+              <code className="hash text-[11px]">GET</code> sample-dossier.json
+            </a>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs shrink-0">
+          <RuleCountChip label="Critical" count={critical} dotClass="bg-rose-500" />
+          <RuleCountChip label="High" count={high} dotClass="bg-amber-500" />
+          <RuleCountChip label="Medium" count={medium} dotClass="bg-yellow-500" />
+          <RuleCountChip label="Low" count={low} dotClass="bg-emerald-500" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RuleCountChip({
+  label,
+  count,
+  dotClass,
+}: {
+  label: string;
+  count: number;
+  dotClass: string;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-paper-200 min-w-[110px]">
+      <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      <span className="text-[10.5px] uppercase tracking-wider text-ink-500 font-medium">{label}</span>
+      <span className="ml-auto hash tabular-nums text-sm font-semibold text-ink-900">{count}</span>
+    </div>
   );
 }
 
