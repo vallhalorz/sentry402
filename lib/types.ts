@@ -68,7 +68,9 @@ export type SignalType =
   | "stablecoin_mica_emt_non_compliant"
   | "stablecoin_issuer_frozen_match"
   | "stablecoin_velocity_typology"
-  | "stablecoin_dprk_cluster_proximity";
+  | "stablecoin_dprk_cluster_proximity"
+  | "external_sanctions_oracle_confirmed"
+  | "external_sanctions_oracle_disagreement";
 
 /**
  * Signal — a single risk finding. Cites Evidence ids.

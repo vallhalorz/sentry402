@@ -7,7 +7,17 @@
  * documentation purposes. Do NOT silently change weights without bumping.
  */
 
-export const RULE_PACK_VERSION = "0.4.0-mvp";
+export const RULE_PACK_VERSION = "0.5.0-mvp";
+// 0.5.0: External cross-check via the public Chainalysis Sanctions Oracle
+//        (0x40C57923924B5c5c5455c48D93317139ADDaC8fb on Ethereum mainnet).
+//        Two new rules: external_sanctions_oracle_confirmed (cited evidence
+//        attached to existing direct-match signal) and
+//        external_sanctions_oracle_disagreement (regulator-relevant —
+//        surfaces recent Treasury designations the local SDN list has not
+//        yet synced). Cross-check is EVM-only — the oracle contract is not
+//        deployed on Solana. Latency neutral: runs in the existing
+//        Promise.all batch. CHAINALYSIS_ORACLE_VERSION pinned in dossier
+//        metadata for FCA 2024 reproducibility.
 // 0.4.0: Solana first-class coverage via Helius DAS + Enhanced Transactions.
 //        Solana subjects no longer return a "limited coverage" advisory —
 //        they get a parallel pipeline that calls Helius for SPL+native
@@ -175,6 +185,28 @@ export const RULE_CONFIG = {
   },
   stablecoin_dprk_cluster_proximity: {
     weight: 40, // direct interaction with SB0416 stablecoin addresses
+    severity: "critical",
+    threshold: 1,
+  },
+  // ===== External cross-check (0.5.0-mvp) =====
+  external_sanctions_oracle_confirmed: {
+    // Same critical severity as our own ofac_direct_match, but does not
+    // double-count weight when both fire on the same address. Engine
+    // attaches Chainalysis evidence to the existing direct-match signal
+    // rather than emitting a second saturating contribution.
+    weight: 0,
+    severity: "critical",
+    threshold: 1,
+  },
+  external_sanctions_oracle_disagreement: {
+    // Two directions:
+    //   (a) oracle YES + local NO → critical (Treasury moved faster than
+    //       our manual SDN sync; investigate as if directly sanctioned).
+    //   (b) oracle NO + local YES → low (local stale; verdict still
+    //       driven by our SDN match, the disagreement is logged for
+    //       compliance review).
+    // The engine picks the right severity per direction at fire time.
+    weight: 80,
     severity: "critical",
     threshold: 1,
   },

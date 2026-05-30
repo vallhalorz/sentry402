@@ -23,6 +23,7 @@ export type RuleMeta = {
   /** Plain-English category the rule belongs to. */
   category:
     | "Sanctions"
+    | "External cross-check"
     | "Approvals & drainers"
     | "Stablecoin compliance"
     | "Velocity & freshness"
@@ -106,6 +107,47 @@ export const RULE_PACK_META: readonly RuleMeta[] = [
         "FATF Recommendation 16 (Wire Transfers / Travel Rule); FATF Targeted Update June 2025 §indirect exposure",
     },
     introducedIn: "0.3.0",
+  },
+  // ===== External cross-check =====
+  {
+    id: "external_sanctions_oracle_confirmed",
+    severity: "critical",
+    weight: 0,
+    category: "External cross-check",
+    shortDescription:
+      "Chainalysis Sanctions Oracle independently agrees the subject is SDN.",
+    longDescription:
+      "When the subject is on our own SDN list AND the public Chainalysis Sanctions Oracle returns true, we attach the oracle response as a second independent source on the existing direct-match signal. This does not double-count score (the oracle agreement confirms, it does not amplify). The cross-check makes the dossier audit-ready: two independent SDN datasets converge, one of them (Chainalysis) being the same reference Uniswap, Coinbase Wallet, and most major frontends rely on.",
+    whatItChecks:
+      "eth_call isSanctioned(subject) on the Chainalysis Oracle contract (0x40C57923924B5c5c5455c48D93317139ADDaC8fb), Ethereum mainnet. Read-only, no gas, no API key.",
+    scopeNote:
+      "EVM only — the oracle contract is not deployed on Solana.",
+    threshold: "Both local SDN match and oracle = true",
+    citations: {
+      treasury:
+        "Chainalysis Sanctions Oracle (court-admissible reference; matches OFAC SDN)",
+    },
+    introducedIn: "0.5.0",
+  },
+  {
+    id: "external_sanctions_oracle_disagreement",
+    severity: "critical",
+    weight: 80,
+    category: "External cross-check",
+    shortDescription:
+      "Chainalysis Oracle disagrees with the local SDN list — investigate.",
+    longDescription:
+      "Two directions. (a) ORACLE YES + LOCAL NO: Treasury may have designated the address since our last manual SDN sync. Treated as critical — the dossier flags the wallet as effectively sanctioned even though our local list is silent, so the verdict is block. This is the most regulator-relevant case: it surfaces designations we would otherwise miss between syncs. (b) ORACLE NO + LOCAL YES: emitted at low severity. The verdict is still driven by the local match, but the disagreement is logged so the compliance officer can confirm the address has not been delisted since our last sync.",
+    whatItChecks:
+      "Compares Chainalysis Oracle result against isSdnAddress(subject) from lib/sdn.ts. Severity is chosen per direction.",
+    scopeNote:
+      "EVM only. Direction (a) saturates score at 100. Direction (b) does not raise the score but logs the disagreement.",
+    threshold: "Either side returns a result the other does not",
+    citations: {
+      treasury:
+        "Chainalysis Sanctions Oracle vs. internal SDN list (lib/sdn.ts, pinned by sdn_list_version)",
+    },
+    introducedIn: "0.5.0",
   },
   // ===== Approvals & drainers =====
   {
@@ -318,6 +360,7 @@ export type RuleCategory = RuleMeta["category"];
 
 export const RULE_CATEGORIES: RuleCategory[] = [
   "Sanctions",
+  "External cross-check",
   "Approvals & drainers",
   "Stablecoin compliance",
   "Velocity & freshness",

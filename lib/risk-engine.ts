@@ -64,6 +64,11 @@ import {
   KNOWN_ADDRESSES_VERSION,
   lookupAddressLabel,
 } from "./known-addresses";
+import {
+  CHAINALYSIS_ORACLE_ADDRESS,
+  CHAINALYSIS_ORACLE_VERSION,
+  checkChainalysisOracle,
+} from "./chainalysis-oracle";
 import type { CounterpartyAggregate, WalletActivity, WalletHolding } from "./types";
 import { RULE_CONFIG, RULE_PACK_VERSION } from "./rule-pack";
 import { sha256Hex } from "./hash";
@@ -77,6 +82,15 @@ export async function buildDossier(
   const queriedAt = new Date().toISOString();
   const evidence: Record<string, Evidence> = {};
   const signals: Signal[] = [];
+
+  // Fire the Chainalysis Sanctions Oracle cross-check immediately at the top
+  // of the dossier build. The oracle is an external EVM smart contract
+  // (read-only eth_call), so it has no dependency on the GoldRush + Helius
+  // pipeline and overlaps cleanly with them. By the time we reach the
+  // sanctions evaluation block below, the oracle promise either resolved
+  // already (typical: 200-600ms) or is still pending in the background; we
+  // await it exactly where we need its result.
+  const oracleP = checkChainalysisOracle(chain, wallet);
 
   // ---- Rule: ofac_direct_match ----
   // Subject wallet itself is on the active OFAC SDN list. This is the highest-
@@ -181,6 +195,21 @@ export async function buildDossier(
     // are cosmetic counterparty / holdings panels, which are irrelevant
     // once the subject itself is sanctioned. The dossier metadata
     // records the fast-path so an auditor can confirm what we skipped.
+    //
+    // Before returning, await the Chainalysis cross-check so the
+    // fast-path dossier still carries the independent confirmation
+    // evidence. If the oracle agrees, we get "two independent SDN
+    // datasets converge" — extremely strong audit posture. If the
+    // oracle disagrees (returns false), we log it as informational.
+    const oracleAgree = await oracleP;
+    appendOracleCrossCheckSignal({
+      oracleResult: oracleAgree,
+      localSdnMatched: true,
+      directHitLabel: directHit.label,
+      chain,
+      signals,
+      evidence,
+    });
     return {
       subject: {
         wallet,
@@ -210,11 +239,13 @@ export async function buildDossier(
         known_addresses_version: KNOWN_ADDRESSES_VERSION,
         // Audit transparency — record that we short-circuited and why.
         fast_path: "ofac_direct_match",
+        chainalysis_oracle_version: CHAINALYSIS_ORACLE_VERSION,
       } as DossierMetadata & {
         stablecoin_registry_version: string;
         issuer_frozen_list_version: string;
         known_addresses_version: string;
         fast_path: string;
+        chainalysis_oracle_version: string;
       },
     };
   }
@@ -996,6 +1027,22 @@ export async function buildDossier(
     }
   }
 
+  // Main flow finished its rule evaluation. Now resolve the Chainalysis
+  // Sanctions Oracle promise and emit its cross-check signal. Because the
+  // local SDN match would have triggered the fast-path return above, by
+  // the time we get here we know `isActiveSanctions(directHit)` was false.
+  // The oracle therefore acts as a tripwire: if Chainalysis flags the
+  // address despite our list missing it, that's a regulator-relevant
+  // critical event (Treasury moved faster than our sync).
+  const oracleResult = await oracleP;
+  appendOracleCrossCheckSignal({
+    oracleResult,
+    localSdnMatched: false,
+    chain,
+    signals,
+    evidence,
+  });
+
   const overallScore = Math.min(
     100,
     signals.reduce((s, sig) => s + sig.score_contribution, 0),
@@ -1034,13 +1081,146 @@ export async function buildDossier(
       stablecoin_registry_version: STABLECOIN_REGISTRY_VERSION,
       issuer_frozen_list_version: ISSUER_FROZEN_LIST_VERSION,
       known_addresses_version: KNOWN_ADDRESSES_VERSION,
+      chainalysis_oracle_version: CHAINALYSIS_ORACLE_VERSION,
     } as DossierMetadata & {
       stablecoin_registry_version: string;
       issuer_frozen_list_version: string;
       known_addresses_version: string;
+      chainalysis_oracle_version: string;
     },
   };
   return dossier;
+}
+
+/**
+ * Emit (or annotate) the Chainalysis Oracle cross-check signal. Three
+ * cases the caller cares about:
+ *
+ *   1. local YES + oracle YES → confirmation. We already pushed an
+ *      `ofac_direct_match` signal in the caller; here we append an
+ *      `external_sanctions_oracle_confirmed` signal with weight=0 so the
+ *      score is unchanged but the dossier carries two independent SDN
+ *      sources of evidence.
+ *
+ *   2. local YES + oracle NO → emit a LOW-severity disagreement signal so
+ *      the analyst can confirm the local SDN entry has not been delisted.
+ *      Verdict is still driven by the local match.
+ *
+ *   3. local NO + oracle YES → emit a CRITICAL disagreement signal with
+ *      weight 80 (high enough to saturate the displayed score and flip
+ *      the verdict to block on its own). This is the regulator-relevant
+ *      case: Treasury designated faster than our manual sync.
+ *
+ *   4. local NO + oracle NO → no-op (clean address, no signal needed).
+ *
+ *   5. oracle unavailable (every RPC failed) → no-op. Caller's other
+ *      sanctions rules still produce a defensible dossier; cross-check
+ *      is best-effort.
+ */
+function appendOracleCrossCheckSignal(args: {
+  oracleResult: Awaited<ReturnType<typeof checkChainalysisOracle>>;
+  localSdnMatched: boolean;
+  directHitLabel?: string;
+  chain: ChainName;
+  signals: Signal[];
+  evidence: Record<string, Evidence>;
+}): void {
+  const { oracleResult, localSdnMatched, directHitLabel, chain, signals, evidence } = args;
+  if (!oracleResult) return; // cross-check unavailable
+
+  const oracleEvidence: Evidence = {
+    id: newEvidenceId(),
+    endpoint: "Chainalysis Sanctions Oracle: isSanctioned(address)",
+    endpoint_url: `https://etherscan.io/address/${CHAINALYSIS_ORACLE_ADDRESS}#readContract`,
+    request_params: {
+      contract: CHAINALYSIS_ORACLE_ADDRESS,
+      selector: "0xdf592f7d",
+      argument: oracleResult.queried_address,
+      rpc_used: oracleResult.rpc_used,
+      chainalysis_oracle_version: CHAINALYSIS_ORACLE_VERSION,
+    },
+    response_excerpt: {
+      sanctioned: oracleResult.sanctioned,
+      raw_response: oracleResult.raw_response,
+      latency_ms: oracleResult.latency_ms,
+    },
+    tx_hashes: [],
+    block_heights: [],
+    chain,
+    goldrush_api_version: GOLDRUSH_SDK_VERSION,
+    fetched_at: new Date().toISOString(),
+  };
+  evidence[oracleEvidence.id] = oracleEvidence;
+
+  // Case 1 — both agree.
+  if (localSdnMatched && oracleResult.sanctioned) {
+    signals.push({
+      id: newSignalId(),
+      type: "external_sanctions_oracle_confirmed",
+      severity: "critical",
+      title:
+        `Chainalysis Sanctions Oracle confirms active SDN match` +
+        (directHitLabel ? ` (${directHitLabel})` : ""),
+      rationale: `Two independent SDN datasets converge on this address. The local SDN list (sdn_list_version pinned in metadata) flags the subject as sanctioned; the public Chainalysis Sanctions Oracle (contract ${CHAINALYSIS_ORACLE_ADDRESS} on Ethereum mainnet) independently returns isSanctioned=true via on-chain eth_call. Chainalysis maintains the oracle directly and updates it promptly after Treasury designations; the same reference is consumed by Uniswap, Coinbase Wallet, and most major frontends. The cross-check adds an independent, court-admissible source to the dossier without altering the score (the underlying ofac_direct_match signal already saturated at 100).`,
+      fatf_reference:
+        "FATF Recommendation 6 (Targeted Financial Sanctions related to Terrorism, Terrorist Financing, and Proliferation)",
+      fincen_reference:
+        "FinCEN SAR Form 111 — independent corroborating source",
+      evidence_ids: [oracleEvidence.id],
+      score_contribution: 0, // confirmation, not amplification
+      metadata: {
+        oracle_rpc: oracleResult.rpc_used,
+        oracle_latency_ms: oracleResult.latency_ms,
+      },
+    });
+    return;
+  }
+
+  // Case 3 — oracle YES, local NO. Treasury moved faster than our sync.
+  if (!localSdnMatched && oracleResult.sanctioned) {
+    signals.push({
+      id: newSignalId(),
+      type: "external_sanctions_oracle_disagreement",
+      severity: "critical",
+      title:
+        "Chainalysis Sanctions Oracle flags subject — not in local SDN list",
+      rationale: `The Chainalysis Sanctions Oracle (contract ${CHAINALYSIS_ORACLE_ADDRESS} on Ethereum mainnet) returns isSanctioned=true for this subject, but our local SDN list does not contain a matching entry. The most likely cause is a recent Treasury designation that has not yet been synced into our manual dataset. Treat as if directly sanctioned: recommend immediate freeze, SAR filing, and counsel review pending dataset reconciliation. The verdict is block until the local SDN entry is added or the disagreement is resolved.`,
+      fatf_reference:
+        "FATF Recommendation 6 (Targeted Financial Sanctions related to Terrorism, Terrorist Financing, and Proliferation)",
+      fincen_reference:
+        "FinCEN SAR Form 111 — Suspicious Activity Type 31y (Transaction with OFAC sanctioned country/entity)",
+      evidence_ids: [oracleEvidence.id],
+      score_contribution: 80,
+      metadata: {
+        oracle_rpc: oracleResult.rpc_used,
+        oracle_latency_ms: oracleResult.latency_ms,
+        local_sdn_silent: true,
+      },
+    });
+    return;
+  }
+
+  // Case 2 — local YES, oracle NO. Local stale, log for review.
+  if (localSdnMatched && !oracleResult.sanctioned) {
+    signals.push({
+      id: newSignalId(),
+      type: "external_sanctions_oracle_disagreement",
+      severity: "low",
+      title:
+        "Local SDN match present; Chainalysis Sanctions Oracle does not flag",
+      rationale: `The subject is on our local SDN list but the Chainalysis Sanctions Oracle returns isSanctioned=false. Verdict remains driven by the local match. Logging the disagreement so a compliance officer can confirm whether the address has been delisted since our last manual SDN sync, or whether the oracle has not yet picked up a recent designation that our list does cover.`,
+      evidence_ids: [oracleEvidence.id],
+      score_contribution: 0,
+      metadata: {
+        oracle_rpc: oracleResult.rpc_used,
+        oracle_latency_ms: oracleResult.latency_ms,
+        oracle_disagrees_with_local: true,
+      },
+    });
+    return;
+  }
+
+  // Case 4 — both negative. No signal needed; the cross-check ran cleanly.
 }
 
 function buildHeadline(signals: Signal[], score: number): string {

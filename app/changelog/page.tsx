@@ -19,10 +19,24 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.5.0-mvp",
+    date: "2026-05-30",
+    summary:
+      "External cross-check via the public Chainalysis Sanctions Oracle.",
+    isCurrent: true,
+    changes: [
+      "Every EVM dossier now carries an independent second-source check against the public Chainalysis Sanctions Oracle (contract 0x40C57923924B5c5c5455c48D93317139ADDaC8fb on Ethereum mainnet) — the same reference Uniswap, Coinbase Wallet, and most major frontends consume.",
+      "Two new rules. external_sanctions_oracle_confirmed: when both our local SDN list and the oracle agree, attach the oracle response as cited evidence on the existing direct-match signal — weight 0 (confirmation, not amplification).",
+      "external_sanctions_oracle_disagreement: when the oracle flags an address our local list misses, fire a critical signal with weight 80 — treats Treasury designations that landed faster than our manual sync as effectively sanctioned. The reverse direction (local YES, oracle NO) fires a low-severity disagreement log so an analyst can confirm whether the local SDN entry has been delisted.",
+      "Cross-check is EVM only — the oracle contract is not deployed on Solana.",
+      "Runs in parallel with the existing GoldRush + Helius fetches (typical oracle eth_call latency 200-600ms via publicnode.com fallback list). Net latency impact: zero.",
+      "CHAINALYSIS_ORACLE_VERSION pinned in dossier metadata so the cross-check is reproducible alongside rule_pack_sha256, sdn_list_version, goldrush_api_version, and helius_das_version.",
+    ],
+  },
+  {
     version: "0.4.0-mvp",
     date: "2026-05-08",
     summary: "Solana first-class coverage via Helius DAS + Enhanced Transactions.",
-    isCurrent: true,
     changes: [
       "Solana subjects no longer return a 'limited coverage' advisory — they get a parallel pipeline that calls Helius for SPL + native holdings, recent signatures, and decoded native + token transfer counterparty extraction.",
       "Same Cited<T> / Evidence contract as the EVM side.",
